@@ -1,0 +1,25 @@
+[Unit]
+Description=Cisco Trex preformace test center
+After=network.target auditd.service
+ConditionPathExists=!/etc/trex/trex_not_to_be_run
+
+[Service]
+EnvironmentFile=-/etc/default/trex
+WorkingDirectory=/home/ken/workspace/trex-core/scripts/
+# ExecStartPre=/home/ken/workspace/trex-core/scripts/trex_daemon_server restart
+ExecStart=/home/ken/workspace/trex-core/scripts/trex_daemon_server start
+ExecReload=/home/ken/workspace/trex-core/scripts/trex_daemon_server restart
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+Type=notify
+RuntimeDirectory=trex
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
+Alias=trex.service
+
+
+#cp to /lib/systemd/system/
