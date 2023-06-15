@@ -1,0 +1,3 @@
+[submodule "scripts/external_libs/py-aw9523b"]
+	path = scripts/external_libs/py-aw9523b
+	url = https://fengmushu@github.com/fengmushu/py-aw9523b
