@@ -1,3 +1,6 @@
-[submodule "scripts/external_libs/py-aw9523b"]
-	path = scripts/external_libs/py-aw9523b
-	url = https://fengmushu@github.com/fengmushu/py-aw9523b
+[submodule "scripts/external_libs/butterfly"]
+	path = scripts/external_libs/butterfly
+	url = https://github.com/paradoxxxzero/butterfly.git
+[submodule "scripts/automation/trex_control_plane/interactive/trex/attenuators"]
+	path = scripts/automation/trex_control_plane/interactive/trex/attenuators
+	url = https://github.com/fengmushu/py-aw9523b.git
