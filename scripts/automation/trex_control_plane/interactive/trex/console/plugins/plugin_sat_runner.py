@@ -7,7 +7,7 @@ from trex.attenuators.usbtty_geehy import * 	# ttyDioRotary, ttyUsbGeehy
 import pprint
 import xlsxwriter
 
-USE_ATTEN_ADAURA = True
+USE_ATTEN_ADAURA = False
 
 '''
 Step Attenuator test runner and XLSX sheets plugin
@@ -71,7 +71,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		self.add_argument('-r', '--angles', action = 'store', nargs = "*", default = 0, type = int, required=False,
 			dest = "rota_angles", 
-				help = "set the angle to rotate,  <0-11>: from 0-360°, each step 30°")
+				help = "set the angle to rotate,  <point: 0-11> or <angle: 0-30-60-90...>: from 0-360°, each step 30°")
 
 		self.add_argument('-a', '--auto-report', action = 'store', nargs = "?", default = 1, type = int, required=False,
 			dest = "auto_report", 
@@ -183,14 +183,25 @@ class SatRunner_Plugin(ConsolePlugin):
 		print("  Angle list: {}".format(rota_angles), color='green')
 		print("  Atten Group: from {:d} to {:d} step:{:d} intv: {:d} sec.\n".format(atten_start, atten_end, atten_step, time_intval))
 
+		# transform
+		if type(rota_angles) == 'list':
+			for idx in range(0, len(rota_angles), 1):
+				point = rota_angles[idx]
+				if point > 15:
+					rota_angles[idx] = self.rotate.GetPoint(point)
+					print("transform {} to {}\n".format(point, rota_angles[idx]))
+		else:
+			rota_angles = []
+
 		tab_rota={}
 		if len(rota_angles) == 0:
 			samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
 			tab_rota[0] = samples
 		else:
-			for angle in rota_angles:
+			for point in rota_angles:
+				angle = self.rotate.GetAngle(point)
 				print("rotate to angle: {}".format(angle))
-				self.rotate.SetValue(angle)
+				self.rotate.SetValue(point)
 				samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
 				tab_rota[angle] = samples
 
