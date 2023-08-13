@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 from trex.console.plugins import *
-from trex.attenuators.attenuator import AttenGroup, AttenUnit
-from trex.attenuators.usbtty import SerialttyUSB
+from trex.attenuators.attenuator import * 	# AttenGroup, AttenUnit, AttenAdaura
+from trex.attenuators.usbtty_geehy import * 	# ttyDioRotary, ttyUsbGeehy
 
 import pprint
 import xlsxwriter
+
+USE_ATTEN_ADAURA = True
 
 '''
 Step Attenuator test runner and XLSX sheets plugin
@@ -18,18 +20,23 @@ class SatRunner_Plugin(ConsolePlugin):
 	def __init__(self):
 		super(SatRunner_Plugin, self).__init__()
 		self.console = None
-		self.Ser = SerialttyUSB(None)
-		atten_sc = AttenUnit("HP33321-SC", 3, [20, 40, 10])
-		atten_sd = AttenUnit("HP33321-SD", 3, [30, 40, 5])
-		atten_sg = AttenUnit("HP33321-SG", 3, [20, 5, 10])
-		# init group
-		atten_gp_sc_sg = AttenGroup("SC-SG", self.Ser, [atten_sg, atten_sc])
-		# atten_gp_sc_sg.Dump()
-		self.atten_group = atten_gp_sc_sg
+		if USE_ATTEN_ADAURA:
+			# Adaura-63: 0-63db, 0.5db step
+			self.atten = AttenAdaura("ADAURA-63", None)
+		else:
+			# Hp3X-SC/SD/SG serises
+			ser = ttyUsbGeehy(None)
+			atten_sc = AttenUnit("HP33321-SC", 3, [20, 40, 10])
+			atten_sd = AttenUnit("HP33321-SD", 3, [30, 40, 5])
+			atten_sg = AttenUnit("HP33321-SG", 3, [20, 5, 10])
+			# init group
+			atten_gp_sc_sg = AttenGroup("SC-SG", ser, [atten_sg, atten_sc])
+			# atten_gp_sc_sg.Dump()
+			self.atten = atten_gp_sc_sg
+		self.rotate = ttyDioRotary(None)
 		self.table_xlsx = {}
 		self.time_prefix = time.strftime("%Y-%m-%d-%H%M%S", time.localtime())
 		self.dir_report = '/home/trex/report/'
-
 
 	# used to init stuff
 	def plugin_load(self):
@@ -62,6 +69,10 @@ class SatRunner_Plugin(ConsolePlugin):
 			dest = "time_intval", 
 				help = "auto atten time intval sec")
 
+		self.add_argument('-r', '--angles', action = 'store', nargs = "*", default = 0, type = int, required=False,
+			dest = "rota_angles", 
+				help = "set the angle to rotate,  <0-11>: from 0-360°, each step 30°")
+
 		self.add_argument('-a', '--auto-report', action = 'store', nargs = "?", default = 1, type = int, required=False,
 			dest = "auto_report", 
 				help = "auto generate test report xlsx")
@@ -70,36 +81,32 @@ class SatRunner_Plugin(ConsolePlugin):
 			raise TRexError("Trex console must provided")
 
 	def build_xlsx(self, filename):
-
 		book = xlsxwriter.Workbook("{0}/{1}".format(self.dir_report, filename))
-		sheet = book.add_worksheet()
-
-		chart = book.add_chart({'type': 'line'})
-
-		atten 	= ['attenuator', ]
-		througput = ['throughput', ]
-		for db, thpt in self.table_xlsx.items():
-			atten.append(db)
-			total = 0
-			for pnt in thpt:
-				total += pnt
-			total /= len(thpt)
-			througput.append(total)
-
-		sheet.write_column('A1', atten)
-		sheet.write_column('B1', througput)
-
-		row_dbs  = '=Sheet1!$A$2:$A${:d}'.format(len(atten) + 1)
-		row_thpt = '=Sheet1!$B$2:$B${:d}'.format(len(througput) + 1)
-
-		chart.add_series({
-			'categories': row_dbs, 
-			'values': row_thpt,
-			'name': '=Sheet1!$A1'
-			})
-		chart.set_x_axis({'name': "db"})
-
-		sheet.insert_chart('D1', chart)
+		tab_angles = self.table_xlsx
+		for angle, samples in tab_angles.items():
+			shtname = "angle-{}".format(angle)
+			sheet = book.add_worksheet(shtname)
+			chart = book.add_chart({'type': 'line'})
+			atten 	= ['attenuator', ]
+			througput = ['throughput', ]
+			for db, rxbps in samples.items():
+				atten.append(db)
+				total = 0
+				for snapshot in rxbps:
+					total += snapshot
+				average = total / len(rxbps)
+				througput.append(average)
+			sheet.write_column('A1', atten)
+			sheet.write_column('B1', througput)
+			row_dbs  = '={}!$A$2:$A${:d}'.format(shtname, len(atten) + 1)
+			row_thpt = '={}!$B$2:$B${:d}'.format(shtname, len(througput) + 1)
+			chart.add_series({
+				'categories': row_dbs, 
+				'values': row_thpt,
+				'name': '={}!$A1'.format(shtname)
+				})
+			chart.set_x_axis({'name': "db"})
+			sheet.insert_chart('D1', chart)
 		book.close()
 
 	# We build argparser from do_* functions, stripping the "do_" from name
@@ -124,27 +131,21 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def do_atten(self):
 		''' dump current attenuator grop '''
-		self.atten_group.Dump()
+		self.atten.Dump()
 
 	def json_dump(self, o):
 		print(json.dumps(o, indent=2, separators=(',', ': '), sort_keys = True))
 
-	def do_run(self, atten_start, atten_step, atten_end, time_intval, auto_report, test_prefix):
-		''' report '''
-		print("test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_end))
+	def run_point_atten(self, start, step, end, intval):
+		# reset to start, waiting for ready
+		self.atten.SetGroupValue(start)
+		time.sleep(5)
 
-		# init status
-		self.atten_group.SetValue(atten_start)
-		time.sleep(10)
-
-		print("Target: {0} cut to 5*X = {1}".format(atten_end, int(atten_end / 5) * 5))
-		print("  Atten Group: from {:d} to {:d} step:{:d} intv: {:d} sec.\n".format(atten_start, atten_end, atten_step, time_intval))
-
-		table_rxbps={}
-		for av in range(atten_start, atten_end + 5, atten_step):
-			self.atten_group.SetValue(av)
+		tab_rxbps = {}
+		for av in range(start, end, step):
+			self.atten.SetGroupValue(av)
 			stat_count = 10
-			real_intval = time_intval / stat_count
+			real_intval = intval / stat_count
 			rx_bps = []
 			for tv in range(0, stat_count, 1):
 				# limit update rate
@@ -152,16 +153,36 @@ class SatRunner_Plugin(ConsolePlugin):
 					self.trex_client._show_global_stats()
 
 				# collection stats
-				stats = self.trex_client.get_stats(ports=[0, 1, 2, 3], sync_now=True)
+				stats = self.trex_client.get_stats(ports=[0, 1], sync_now=True)
 				# self.json_dump(stats['global']) --- trace
-				# rx bps to Mbps
+				# rx samples to Mbps
 				rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
 				time.sleep(real_intval)
 			# combin
-			table_rxbps.update({av: rx_bps[:]})
+			tab_rxbps.update({av: rx_bps[:]})
+
+		return tab_rxbps
+
+	def do_run(self, atten_start, atten_step, atten_end, time_intval, rota_angles, auto_report, test_prefix):
+		''' report '''
+		print("test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_end))
+		print("Target: {0} cut to 5*X = {1}".format(atten_end, int(atten_end / 5) * 5), color='red')
+		print("  Angle list: {}".format(rota_angles), color='green')
+		print("  Atten Group: from {:d} to {:d} step:{:d} intv: {:d} sec.\n".format(atten_start, atten_end, atten_step, time_intval))
+
+		tab_rota={}
+		if len(rota_angles) == 0:
+			samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
+			tab_rota[0] = samples
+		else:
+			for angle in rota_angles:
+				print("rotate to angle: {}".format(angle))
+				self.rotate.SetValue(angle)
+				samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
+				tab_rota[angle] = samples
 
 		# self.json_dump(table_rxbps) # --- trace
-		self.table_xlsx = table_rxbps
+		self.table_xlsx = tab_rota
 
 		if auto_report == 1:
 			self.build_xlsx("auto-{0}-{1}.xlsx".format(self.time_prefix, test_prefix))
