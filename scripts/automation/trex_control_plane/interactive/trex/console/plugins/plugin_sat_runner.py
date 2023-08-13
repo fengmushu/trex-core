@@ -35,8 +35,8 @@ class SatRunner_Plugin(ConsolePlugin):
 			self.atten = atten_gp_sc_sg
 		self.rotate = ttyDioRotary(None)
 		self.table_xlsx = {}
-		self.time_prefix = time.strftime("%Y-%m-%d-%H%M%S", time.localtime())
 		self.dir_report = '/home/trex/report/'
+		self.update_timestamp()
 
 	# used to init stuff
 	def plugin_load(self):
@@ -80,8 +80,20 @@ class SatRunner_Plugin(ConsolePlugin):
 		if self.console is None:
 			raise TRexError("Trex console must provided")
 
+	def update_timestamp(self):
+		self.time_prefix = time.strftime("%Y-%m-%d-%H%M%S", time.localtime())
+
 	def build_xlsx(self, filename):
-		book = xlsxwriter.Workbook("{0}/{1}".format(self.dir_report, filename))
+		ts = time.localtime()
+		dir_date = time.strftime("%Y-%m-%d", ts)
+		dir_name = "{0}/{1}".format(self.dir_report, dir_date)
+		try:
+			import os
+			os.popen('mkdir -p {}'.format(dir_name))
+		except Exception as e:
+			print(e)
+
+		book = xlsxwriter.Workbook("{0}/{1}".format(dir_name, filename))
 		tab_angles = self.table_xlsx
 		for angle, samples in tab_angles.items():
 			shtname = "angle-{}".format(angle)
@@ -120,6 +132,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.trex_client.logger.info('Sheets will dump to: {0}/{1}!'.format(
 				self.dir_report, bold(file_report.capitalize()))) # <--- trex_client is set implicitly
 
+		self.update_timestamp()
 		self.build_xlsx("report-{0}.xlsx".format(self.time_prefix, file_report))
 
 	def do_show(self):
@@ -185,6 +198,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.table_xlsx = tab_rota
 
 		if auto_report == 1:
+			self.update_timestamp()
 			self.build_xlsx("auto-{0}-{1}.xlsx".format(self.time_prefix, test_prefix))
 
 	def set_plugin_console(self, trex_console):
