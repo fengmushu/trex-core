@@ -6,12 +6,16 @@ from trex.attenuators.usbtty_geehy import * 	# ttyDioRotary, ttyUsbGeehy
 
 import pprint
 import xlsxwriter
+import random
 
-USE_ATTEN_ADAURA = False
-
-'''
-Step Attenuator test runner and XLSX sheets plugin
-'''
+USE_ATTEN_ADAURA = True
+'''Step Attenuator selection for test runner and XLSX sheets plugin'''
+XLSX_HEADER_OFFSET = 1
+'''Datasets lable'''
+XLSX_SECTION_OFFSET = 6
+'''Section blank line'''
+STEP_SAMPLE_COUNT = 10
+'''The smaple count of each attenuator step'''
 
 class SatRunner_Plugin(ConsolePlugin):
 	def plugin_description(self):
@@ -34,9 +38,11 @@ class SatRunner_Plugin(ConsolePlugin):
 			# atten_gp_sc_sg.Dump()
 			self.atten = atten_gp_sc_sg
 		self.rotate = ttyDioRotary(None)
-		self.table_xlsx = {}
+		self.xlsx = {}
 		self.dir_report = '/home/trex/report/'
 		self.update_timestamp()
+		self.header_offset = XLSX_HEADER_OFFSET
+		self.section_offset = XLSX_SECTION_OFFSET
 
 	# used to init stuff
 	def plugin_load(self):
@@ -94,31 +100,76 @@ class SatRunner_Plugin(ConsolePlugin):
 			print(e)
 
 		book = xlsxwriter.Workbook("{0}/{1}".format(dir_name, filename))
-		tab_angles = self.table_xlsx
-		for angle, samples in tab_angles.items():
-			shtname = "angle-{}".format(angle)
-			sheet = book.add_worksheet(shtname)
-			chart = book.add_chart({'type': 'line'})
+		keep_angle_scan_atten = self.xlsx
+		'''
+		first page is graphic report
+		'''
+		sheet_dashboard = book.add_worksheet("Dashboard")
+		sheet_dataraw = book.add_worksheet("DataRaw")
+		chart_radar = book.add_chart({'type': 'radar', 'subtype': 'with_markers'})
+
+		# angle -> atten -> average
+		offset = self.header_offset
+		keep_atten_scan_angle = {}
+		angles = keep_angle_scan_atten.keys()
+		point_idx = 0
+		for angle, samples in keep_angle_scan_atten.items():
 			atten 	= ['attenuator', ]
-			througput = ['throughput', ]
+			throughput = ['throughput, {}°'.format(angle), ]
 			for db, rxbps in samples.items():
 				atten.append(db)
 				total = 0
 				for snapshot in rxbps:
 					total += snapshot
 				average = total / len(rxbps)
-				througput.append(average)
-			sheet.write_column('A1', atten)
-			sheet.write_column('B1', througput)
-			row_dbs  = '={}!$A$2:$A${:d}'.format(shtname, len(atten) + 1)
-			row_thpt = '={}!$B$2:$B${:d}'.format(shtname, len(througput) + 1)
-			chart.add_series({
-				'categories': row_dbs, 
-				'values': row_thpt,
-				'name': '={}!$A1'.format(shtname)
+				throughput.append(average)
+				''' =DataRaw!$B$2,DataRaw!$B$11,DataRaw!$B$20,DataRaw!$B$29,DataRaw!$B$38,DataRaw!$B$47 '''
+				if not db in keep_atten_scan_angle:
+					keep_atten_scan_angle[db] = {}
+				if point_idx == 0:
+					keep_atten_scan_angle[db].update({angle: "='DataRaw'!$B${:d}".format(offset + len(atten) - 1 )})
+				else:
+					keep_atten_scan_angle[db].update({angle: ",'DataRaw'!$B${:d}".format(offset + len(atten) - 1 )})
+
+			sheet_dataraw.write_column('A{:d}'.format(offset), atten)
+			sheet_dataraw.write_column('B{:d}'.format(offset), throughput)
+
+			ds_atten  = "='DataRaw'!$A${:d}:$A${:d}".format(offset + 1, offset + len(atten) - 1)
+			ds_line_thoughput = "='DataRaw'!$B${:d}:$B${:d}".format(offset + 1, offset + len(throughput) - 1)
+
+			chart_line = book.add_chart({'type': 'line'})
+			chart_line.add_series({
+				'categories': ds_atten, 
+				'values': ds_line_thoughput,
+				'name': "='DataRaw'!$B{:d}".format(offset),
 				})
-			chart.set_x_axis({'name': "db"})
-			sheet.insert_chart('D1', chart)
+			chart_line.set_x_axis({'name': "Attenuator"})
+			# chart_line.set_y_axis({'name': 'Throughput'})
+
+			sheet_dataraw.insert_chart('D{:d}'.format(offset), chart_line)
+			offset += len(atten) + self.section_offset
+			point_idx += 1
+
+		# build radar chart
+		offset = self.header_offset
+		v_angles = ["Angle",]
+		v_angles.extend(angles)
+		sheet_dashboard.write_column('A{:d}'.format(offset), v_angles)
+		''' =Dashboard!$A$2:$A$8 '''
+		ds_angles = "='Dashboard'!$A${:d}:$A${:d}".format(offset + 1, offset + len(angles))
+
+		chart_radar.set_x_axis({'name': "Angle"})
+		for db, angs in keep_atten_scan_angle.items():
+			ds_angle_throughput = ""
+			for angle, ds in angs.items():
+				ds_angle_throughput += ds
+			# print(ds_angle_throughput)
+			chart_radar.add_series({
+				'categories': ds_angles,
+				"values": ds_angle_throughput,
+				"name": "{} db".format(db)
+			})
+		sheet_dashboard.insert_chart('D1', chart_radar)
 		book.close()
 
 	# We build argparser from do_* functions, stripping the "do_" from name
@@ -150,17 +201,17 @@ class SatRunner_Plugin(ConsolePlugin):
 		print(json.dumps(o, indent=2, separators=(',', ': '), sort_keys = True))
 
 	def run_point_atten(self, start, step, end, intval):
-		# reset to start, waiting for ready
+		''' reset to start, waiting for ready '''
 		self.atten.SetGroupValue(start)
 		time.sleep(5)
 
 		tab_rxbps = {}
 		for av in range(start, end, step):
 			self.atten.SetGroupValue(av)
-			stat_count = 10
-			real_intval = intval / stat_count
+			sample_count = STEP_SAMPLE_COUNT
+			real_intval = intval / sample_count
 			rx_bps = []
-			for tv in range(0, stat_count, 1):
+			for tv in range(0, sample_count, 1):
 				# limit update rate
 				if tv % 4 == 0:
 					self.trex_client._show_global_stats()
@@ -173,40 +224,40 @@ class SatRunner_Plugin(ConsolePlugin):
 				time.sleep(real_intval)
 			# combin
 			tab_rxbps.update({av: rx_bps[:]})
-
 		return tab_rxbps
 
 	def do_run(self, atten_start, atten_step, atten_end, time_intval, rota_angles, auto_report, test_prefix):
 		''' report '''
-		print("test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_end))
+		print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_end))
 		print("Target: {0} cut to 5*X = {1}".format(atten_end, int(atten_end / 5) * 5), color='red')
-		print("  Angle list: {}".format(rota_angles), color='green')
-		print("  Atten Group: from {:d} to {:d} step:{:d} intv: {:d} sec.\n".format(atten_start, atten_end, atten_step, time_intval))
+		print("  Angle {}: {}".format(type(rota_angles), rota_angles), color='green')
+		print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec.\n".format(atten_start, atten_end, atten_step, time_intval))
 
 		# transform
-		if type(rota_angles) == 'list':
+		if type(rota_angles) == list:
 			for idx in range(0, len(rota_angles), 1):
 				point = rota_angles[idx]
 				if point > 15:
 					rota_angles[idx] = self.rotate.GetPoint(point)
-					print("transform {} to {}\n".format(point, rota_angles[idx]))
+					print("transform {} to {}".format(point, rota_angles[idx]))
 		else:
 			rota_angles = []
 
-		tab_rota={}
+		print("Rotar angles:{}".format(rota_angles))
+		ds_rota={}
 		if len(rota_angles) == 0:
 			samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
-			tab_rota[0] = samples
+			ds_rota[0] = samples
 		else:
 			for point in rota_angles:
 				angle = self.rotate.GetAngle(point)
-				print("rotate to angle: {}".format(angle))
+				print("Rotar to angle: {}".format(angle), color='green', format='bold')
 				self.rotate.SetValue(point)
 				samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
-				tab_rota[angle] = samples
+				ds_rota[angle] = samples
 
-		# self.json_dump(table_rxbps) # --- trace
-		self.table_xlsx = tab_rota
+		# self.json_dump(ds_rota) # --- trace
+		self.xlsx = ds_rota
 
 		if auto_report == 1:
 			self.update_timestamp()
@@ -214,3 +265,31 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
+
+	def do_unit_test(self):
+		''' unit test, for reporter, rotray, attenuator... '''
+		ds_ut = {}
+		ds_rota = []
+
+		angles = [0, 30, 60, 90, 120, 150, 180]
+		attens = [15, 20, 25, 30, 35, 40, 45, 50]
+		for ag in angles:
+			''' data sets link this '''
+			ds_meta = {
+				#  '15': [100000, 200000, 300000, 400000, 500000, 600000],
+				#  '20': [80000, 200000, 300000, 400000, 500000, 60000],
+				#  '25': [70000, 200000, 300000, 400000, 500000, 6000],
+				#  '30': [60000, 200000, 300000, 400000, 50000, 6000],
+				#  '35': [50000, 200000, 300000, 400000, 5000, 600 ],
+				#  '40': [40000, 200000, 300000, 400000, 500, 600],
+				#  '45': [30000, 200000, 300000, 400, 500, 600],
+			}
+			for at in attens:
+				base = []
+				for sample in range(1, 10, 1):
+					base.append(random.randint(100000000, 200000000) / at)
+				ds_meta.update({at: base})
+			ds_ut.update({ag: ds_meta.copy()})
+		self.xlsx = ds_ut
+		self.update_timestamp()
+		self.build_xlsx("unitest-{0}-{1}.xlsx".format(self.time_prefix, "reporter"))
