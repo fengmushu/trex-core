@@ -14,7 +14,7 @@ XLSX_HEADER_OFFSET = 1
 '''Datasets lable'''
 XLSX_SECTION_OFFSET = 6
 '''Section blank line'''
-STEP_SAMPLE_COUNT = 10
+STEP_SAMPLE_COUNT = 1
 '''The smaple count of each attenuator step'''
 
 class SatRunner_Plugin(ConsolePlugin):
@@ -55,33 +55,45 @@ class SatRunner_Plugin(ConsolePlugin):
 			dest = 'dir_report', # <----- variable name to be used
 				help = 'directory to creat xlsx reports')
 
-		self.add_argument('-p', '--prefix', action = 'store', nargs = '?', default = 'AX3000K-DL', type = str, required = False, 
+		self.add_argument('--prefix', action = 'store', nargs = '?', default = 'anonymous', type = str, required = False, 
 			dest = 'test_prefix', # <----- variable name to be used
 				help = 'file name prefix to creat xlsx report')
 
-		self.add_argument('-s', '--start', action = 'store', nargs='?', default = 20, type=int, required = False, 
+		self.add_argument('--start', action = 'store', nargs='?', default = 15, type=int, required = False, 
 			dest = "atten_start", 
 				help = "init atten value")
 
-		self.add_argument('-t', '--step', action = 'store', nargs='?', default = 5, type=int, required=False,
+		self.add_argument('--step', action = 'store', nargs='?', default = 5, type=int, required=False,
 			dest = "atten_step", 
 				help = "atten step up/down value")
 
-		self.add_argument('-e', '--end', action = 'store', nargs = "?", default = 60, type = int, required=False,
-			dest = "atten_end", 
-				help = "atten end/stop/keep value")
+		self.add_argument('--stop', action = 'store', nargs = "?", default = 60, type = int, required=False,
+			dest = "atten_stop", 
+				help = "atten stop and keep value")
 
-		self.add_argument('-i', '--intv', action = 'store', nargs = "?", default = 10, type = int, required=False,
+		self.add_argument('--intv', action = 'store', nargs = "?", default = 10, type = int, required=False,
 			dest = "time_intval", 
 				help = "auto atten time intval sec")
 
-		self.add_argument('-r', '--angles', action = 'store', nargs = "*", default = 0, type = int, required=False,
+		self.add_argument('--angles', action = 'store', nargs = "*", default = 0, type = int, required=False,
 			dest = "rota_angles", 
 				help = "set the angle to rotate,  <point: 0-11> or <angle: 0-30-60-90...>: from 0-360°, each step 30°")
 
-		self.add_argument('-a', '--auto-report', action = 'store', nargs = "?", default = 1, type = int, required=False,
+		self.add_argument('--auto-report', action = 'store', nargs = "?", default = 1, type = int, required=False,
 			dest = "auto_report", 
 				help = "auto generate test report xlsx")
+
+		self.add_argument('--continuous', action = 'store', nargs = "?", default = 0, type = int, required=False,
+			dest = "continuous", 
+				help = "countinuous mode run 'N' sec, and with sample precision/sec")
+
+		self.add_argument('--atten-value', action='store', nargs = "?", default = 0, type = int, required=False,
+			dest = "atten_value", 
+				help = "set default runtime attenuator value")
+
+		self.add_argument('--precision', action='store', nargs='?', default = STEP_SAMPLE_COUNT, type = int, required=False,
+			dest = "precision", 
+				help = "the sample precision default 1/sec")
 
 		if self.console is None:
 			raise TRexError("Trex console must provided")
@@ -114,8 +126,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		angles = keep_angle_scan_atten.keys()
 		point_idx = 0
 		for angle, samples in keep_angle_scan_atten.items():
-			atten 	= ['attenuator', ]
-			throughput = ['throughput, {}°'.format(angle), ]
+			atten 	= ['Atten|Time', ]
+			throughput = ['Throughput, {}°'.format(angle), ]
 			for db, rxbps in samples.items():
 				atten.append(db)
 				total = 0
@@ -143,7 +155,7 @@ class SatRunner_Plugin(ConsolePlugin):
 				'values': ds_line_thoughput,
 				'name': "='DataRaw'!$B{:d}".format(offset),
 				})
-			chart_line.set_x_axis({'name': "Attenuator"})
+			chart_line.set_x_axis({'name': "Atten|Time"})
 			# chart_line.set_y_axis({'name': 'Throughput'})
 
 			sheet_dataraw.insert_chart('D{:d}'.format(offset), chart_line)
@@ -167,7 +179,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			chart_radar.add_series({
 				'categories': ds_angles,
 				"values": ds_angle_throughput,
-				"name": "{} db".format(db)
+				"name": "{} X".format(db)
 			})
 		sheet_dashboard.insert_chart('D1', chart_radar)
 		book.close()
@@ -200,38 +212,51 @@ class SatRunner_Plugin(ConsolePlugin):
 	def json_dump(self, o):
 		print(json.dumps(o, indent=2, separators=(',', ': '), sort_keys = True))
 
-	def run_point_atten(self, start, step, end, intval):
-		''' reset to start, waiting for ready '''
-		self.atten.SetGroupValue(start)
+	def run_samples(self, samples, intval):
+		rx_bps = []
+		for tv in range(0, samples, 1):
+			# limit update rate
+			if tv % 5 == 0:
+				self.trex_client._show_global_stats()
+
+			# collection stats
+			stats = self.trex_client.get_stats(ports=[0, 1], sync_now=True)
+			# self.json_dump(stats['global']) --- trace
+			# rx samples to Mbps
+			rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
+			time.sleep(intval)
+		return rx_bps
+
+	def run_point_atten(self, start, step, end, intval, cont, atten_def, precision):
+		''' reset to default, waiting for ready '''
+		self.atten.SetGroupValue(atten_def)
 		time.sleep(5)
 
 		tab_rxbps = {}
-		for av in range(start, end, step):
-			self.atten.SetGroupValue(av)
-			sample_count = STEP_SAMPLE_COUNT
-			real_intval = intval / sample_count
-			rx_bps = []
-			for tv in range(0, sample_count, 1):
-				# limit update rate
-				if tv % 4 == 0:
-					self.trex_client._show_global_stats()
-
-				# collection stats
-				stats = self.trex_client.get_stats(ports=[0, 1], sync_now=True)
-				# self.json_dump(stats['global']) --- trace
-				# rx samples to Mbps
-				rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
-				time.sleep(real_intval)
-			# combin
-			tab_rxbps.update({av: rx_bps[:]})
+		if cont == 0:
+			for av in range(start, end, step):
+				self.atten.SetGroupValue(av)
+				rx_bps = self.run_samples(precision, intval / precision)
+				tab_rxbps.update({av: rx_bps[:]})
+		else:
+			for sp in range(0, cont, precision):
+				print("Sample round: {}".format(sp), color='red')
+				rx_bps = self.run_samples(precision, 1)
+				tab_rxbps.update({sp: rx_bps[:]})
 		return tab_rxbps
 
-	def do_run(self, atten_start, atten_step, atten_end, time_intval, rota_angles, auto_report, test_prefix):
+	def do_run(self, atten_start, atten_step, atten_stop, continuous, atten_value, precision, time_intval, rota_angles, auto_report, test_prefix):
 		''' report '''
-		print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_end))
-		print("Target: {0} cut to 5*X = {1}".format(atten_end, int(atten_end / 5) * 5), color='red')
-		print("  Angle {}: {}".format(type(rota_angles), rota_angles), color='green')
-		print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec.\n".format(atten_start, atten_end, atten_step, time_intval))
+		if continuous == 0:
+			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
+			print("Target: {0} cut to 5*X = {1}".format(atten_stop, int(atten_stop / 5) * 5), color='red')
+			print("  Angle {}: {}".format(type(rota_angles), rota_angles), color='green')
+			print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec.\n".format(atten_start, atten_stop, atten_step, time_intval))
+		else:
+			print("Run continuous scan: {:d} secs".format(continuous), color='green', format='bold')
+
+		if atten_value == 0:
+			atten_value = atten_start
 
 		# transform
 		if type(rota_angles) == list:
@@ -246,14 +271,14 @@ class SatRunner_Plugin(ConsolePlugin):
 		print("Rotar angles:{}".format(rota_angles))
 		ds_rota={}
 		if len(rota_angles) == 0:
-			samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
+			samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 			ds_rota[0] = samples
 		else:
 			for point in rota_angles:
 				angle = self.rotate.GetAngle(point)
 				print("Rotar to angle: {}".format(angle), color='green', format='bold')
 				self.rotate.SetValue(point)
-				samples = self.run_point_atten(atten_start, atten_step, atten_end, time_intval)
+				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 				ds_rota[angle] = samples
 
 		# self.json_dump(ds_rota) # --- trace
