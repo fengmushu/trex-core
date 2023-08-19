@@ -77,7 +77,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		self.add_argument('--angles', action = 'store', nargs = "*", default = 0, type = int, required=False,
 			dest = "rota_angles", 
-				help = "set the angle to rotate,  <point: 0-11> or <angle: 0-30-60-90...>: from 0-360°, each step 30°")
+				help = "set the angle to rotate,  <point: 0 1 2 3 4 ... 11> or <angle: 0 30 60 90 ... 360>: from 0-360°, each step 30°")
 
 		self.add_argument('--auto-report', action = 'store', nargs = "?", default = 1, type = int, required=False,
 			dest = "auto_report", 
@@ -179,7 +179,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			chart_radar.add_series({
 				'categories': ds_angles,
 				"values": ds_angle_throughput,
-				"name": "{} X".format(db)
+				"name": "{} db|sec".format(db)
 			})
 		sheet_dashboard.insert_chart('D1', chart_radar)
 		book.close()
@@ -227,14 +227,14 @@ class SatRunner_Plugin(ConsolePlugin):
 			time.sleep(intval)
 		return rx_bps
 
-	def run_point_atten(self, start, step, end, intval, cont, atten_def, precision):
+	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
 		''' reset to default, waiting for ready '''
 		self.atten.SetGroupValue(atten_def)
 		time.sleep(5)
 
 		tab_rxbps = {}
 		if cont == 0:
-			for av in range(start, end, step):
+			for av in range(start, stop, step):
 				self.atten.SetGroupValue(av)
 				rx_bps = self.run_samples(precision, intval / precision)
 				tab_rxbps.update({av: rx_bps[:]})
@@ -246,7 +246,12 @@ class SatRunner_Plugin(ConsolePlugin):
 		return tab_rxbps
 
 	def do_run(self, atten_start, atten_step, atten_stop, continuous, atten_value, precision, time_intval, rota_angles, auto_report, test_prefix):
-		''' report '''
+		'''
+		<run testor> there's two mode: 
+			- mode continuous run with specified attenuator value, will get the report of throughput by time;
+			- mode step down the attenuator from start to stop, will get the report of throughput by attenuator value;
+			- both these two mode can run with diffirent angles;
+		'''
 		if continuous == 0:
 			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
 			print("Target: {0} cut to 5*X = {1}".format(atten_stop, int(atten_stop / 5) * 5), color='red')
@@ -274,13 +279,17 @@ class SatRunner_Plugin(ConsolePlugin):
 			samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 			ds_rota[0] = samples
 		else:
+			self.rotate.SetValue(0)
+			# TODO: wait ready() ...
 			for point in rota_angles:
 				angle = self.rotate.GetAngle(point)
 				print("Rotar to angle: {}".format(angle), color='green', format='bold')
 				self.rotate.SetValue(point)
 				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 				ds_rota[angle] = samples
-
+		# finished, resotre default values
+		self.rotate.SetOriginal()
+		self.atten.SetGroupValue(atten_value)
 		# self.json_dump(ds_rota) # --- trace
 		self.xlsx = ds_rota
 
