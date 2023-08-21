@@ -7,6 +7,7 @@ from trex.attenuators.usbtty_geehy import * 	# ttyDioRotary, ttyUsbGeehy
 import pprint
 import xlsxwriter
 import random
+# import urllib3
 
 USE_ATTEN_ADAURA = True
 '''Step Attenuator selection for test runner and XLSX sheets plugin'''
@@ -27,6 +28,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		if USE_ATTEN_ADAURA:
 			# Adaura-63: 0-63db, 0.5db step
 			self.atten = AttenAdaura("ADAURA-63", None)
+			self.atten_base_value = 10
 		else:
 			# Hp3X-SC/SD/SG serises
 			ser = ttyUsbGeehy(None)
@@ -37,6 +39,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			atten_gp_sc_sg = AttenGroup("SC-SG", ser, [atten_sg, atten_sc])
 			# atten_gp_sc_sg.Dump()
 			self.atten = atten_gp_sc_sg
+			self.atten_base_value = 15
 		self.rotate = ttyDioRotary(None)
 		self.xlsx = {}
 		self.dir_report = '/home/trex/report/'
@@ -59,7 +62,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			dest = 'test_prefix', # <----- variable name to be used
 				help = 'file name prefix to creat xlsx report')
 
-		self.add_argument('--start', action = 'store', nargs='?', default = 15, type=int, required = False, 
+		self.add_argument('--start', action = 'store', nargs='?', default = 0, type=int, required = False, 
 			dest = "atten_start", 
 				help = "init atten value")
 
@@ -220,7 +223,7 @@ class SatRunner_Plugin(ConsolePlugin):
 				self.trex_client._show_global_stats()
 
 			# collection stats
-			stats = self.trex_client.get_stats(ports=[0, 1], sync_now=True)
+			stats = self.trex_client.get_stats(ports=[2, 3], sync_now=True)
 			# self.json_dump(stats['global']) --- trace
 			# rx samples to Mbps
 			rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
@@ -229,15 +232,16 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
 		''' reset to default, waiting for ready '''
+		print("Reset default atten...")
 		self.atten.SetGroupValue(atten_def)
-		time.sleep(5)
+		time.sleep(10)
 
 		tab_rxbps = {}
 		if cont == 0:
 			for av in range(start, stop, step):
 				self.atten.SetGroupValue(av)
 				rx_bps = self.run_samples(precision, intval / precision)
-				tab_rxbps.update({av: rx_bps[:]})
+				tab_rxbps.update({self.atten_base_value + av: rx_bps[:]})
 		else:
 			for sp in range(0, cont, precision):
 				print("Sample round: {}".format(sp), color='red')
@@ -273,6 +277,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		else:
 			rota_angles = []
 
+		self.rotate.SetOriginal()
 		print("Rotar angles:{}".format(rota_angles))
 		ds_rota={}
 		if len(rota_angles) == 0:
@@ -295,7 +300,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		if auto_report == 1:
 			self.update_timestamp()
-			self.build_xlsx("auto-{0}-{1}.xlsx".format(self.time_prefix, test_prefix))
+			self.build_xlsx("{0}-{1}.xlsx".format(test_prefix, self.time_prefix))
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
@@ -326,4 +331,4 @@ class SatRunner_Plugin(ConsolePlugin):
 			ds_ut.update({ag: ds_meta.copy()})
 		self.xlsx = ds_ut
 		self.update_timestamp()
-		self.build_xlsx("unitest-{0}-{1}.xlsx".format(self.time_prefix, "reporter"))
+		self.build_xlsx("unitest-{0}-{1}.xlsx".format("report", self.time_prefix))
