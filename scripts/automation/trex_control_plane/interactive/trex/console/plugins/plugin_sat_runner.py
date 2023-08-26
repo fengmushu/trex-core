@@ -7,9 +7,10 @@ from trex.attenuators.usbtty_geehy import * 	# ttyDioRotary, ttyUsbGeehy
 import pprint
 import xlsxwriter
 import random
-# import urllib3
 
-USE_ATTEN_ADAURA = True
+USE_ATTEN_HP33321_SX 	= 0
+USE_ATTEN_ADAURA 	= 1
+ATTEN_SELECTION_DEF	= USE_ATTEN_ADAURA
 '''Step Attenuator selection for test runner and XLSX sheets plugin'''
 XLSX_HEADER_OFFSET = 1
 '''Datasets lable'''
@@ -25,27 +26,14 @@ class SatRunner_Plugin(ConsolePlugin):
 	def __init__(self):
 		super(SatRunner_Plugin, self).__init__()
 		self.console = None
-		if USE_ATTEN_ADAURA:
-			# Adaura-63: 0-63db, 0.5db step
-			self.atten = AttenAdaura("ADAURA-63", None)
-			self.atten_base_value = 10
-		else:
-			# Hp3X-SC/SD/SG serises
-			ser = ttyUsbGeehy(None)
-			atten_sc = AttenUnit("HP33321-SC", 3, [20, 40, 10])
-			atten_sd = AttenUnit("HP33321-SD", 3, [30, 40, 5])
-			atten_sg = AttenUnit("HP33321-SG", 3, [20, 5, 10])
-			# init group
-			atten_gp_sc_sg = AttenGroup("SC-SG", ser, [atten_sg, atten_sc])
-			# atten_gp_sc_sg.Dump()
-			self.atten = atten_gp_sc_sg
-			self.atten_base_value = 15
-		self.rotate = ttyDioRotary(None)
 		self.xlsx = {}
+		self.atten_selection = ATTEN_SELECTION_DEF
 		self.dir_report = '/home/trex/report/'
-		self.update_timestamp()
 		self.header_offset = XLSX_HEADER_OFFSET
 		self.section_offset = XLSX_SECTION_OFFSET
+		self.rotate = ttyDioRotary(None)
+		self.update_timestamp()
+		self.init_atten_group()
 
 	# used to init stuff
 	def plugin_load(self):
@@ -97,6 +85,10 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.add_argument('--precision', action='store', nargs='?', default = STEP_SAMPLE_COUNT, type = int, required=False,
 			dest = "precision", 
 				help = "the sample precision default 1/sec")
+
+		self.add_argument('--atten-selection', action='store', nargs='?', default = USE_ATTEN_ADAURA, type = int, required=True,
+			dest = "atten_selection",
+				help = "0: 'HP33321-SX', 1 <default>: 'Adaura 0-63db, stop 0.5'")
 
 		if self.console is None:
 			raise TRexError("Trex console must provided")
@@ -187,6 +179,38 @@ class SatRunner_Plugin(ConsolePlugin):
 		sheet_dashboard.insert_chart('D1', chart_radar)
 		book.close()
 
+	def init_atten_group(self):
+		atten = self.atten_selection
+		if atten == USE_ATTEN_ADAURA:
+			# Adaura-63: 0-63db, 0.5db step
+			self.atten = AttenAdaura("ADAURA-63", None)
+			self.atten_base_value = 10
+			self.atten.Dump()
+		elif atten == USE_ATTEN_HP33321_SX:
+			# Hp3X-SC/SD/SG serises
+			ser = ttyUsbGeehy(None)
+			atten_sc = AttenUnit("HP33321-SC", 3, [20, 40, 10])
+			atten_sd = AttenUnit("HP33321-SD", 3, [30, 40, 5])
+			atten_sg = AttenUnit("HP33321-SG", 3, [20, 5, 10])
+			# init group
+			atten_gp_sc_sg = AttenGroup("SC-SG", ser, [atten_sg, atten_sc])
+			# atten_gp_sc_sg.Dump()
+			self.atten = atten_gp_sc_sg
+			self.atten_base_value = 15
+			self.atten.Dump()
+		else:
+			print("Not supported attenuator: {}".format(atten))
+			raise Exception("Attenuator type '{}' not supported".format(atten))
+
+	def do_setup(self, atten_selection):
+		''' setup base vars of current system '''
+		if atten_selection == USE_ATTEN_ADAURA:
+			print("atten selection is 'ADAURA-63'")
+		else:
+			print("atten selection is 'HP33321-SX'")
+		self.atten_selection = atten_selection
+		self.init_atten_group()
+
 	# We build argparser from do_* functions, stripping the "do_" from name
 	def do_report(self, dir_report, file_report): # <------ name was registered in plugin_load
 		''' dump statistics to sheets file '''
@@ -223,7 +247,9 @@ class SatRunner_Plugin(ConsolePlugin):
 				self.trex_client._show_global_stats()
 
 			# collection stats
-			stats = self.trex_client.get_stats(ports=[2, 3], sync_now=True)
+			stats = self.trex_client.get_stats(ports=[0, 1], sync_now=True)
+			# stats = self.trex_client.get_stats(ports=[2, 3], sync_now=True)
+			# stats = self.trex_client.get_stats(sync_now=True)
 			# self.json_dump(stats['global']) --- trace
 			# rx samples to Mbps
 			rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
@@ -293,19 +319,19 @@ class SatRunner_Plugin(ConsolePlugin):
 				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 				ds_rota[angle] = samples
 		# finished, resotre default values
-		self.rotate.SetOriginal()
+		# self.rotate.SetOriginal()
 		self.atten.SetGroupValue(atten_value)
 		# self.json_dump(ds_rota) # --- trace
 		self.xlsx = ds_rota
 
 		if auto_report == 1:
 			self.update_timestamp()
-			self.build_xlsx("{0}-{1}.xlsx".format(test_prefix, self.time_prefix))
+			self.build_xlsx("{0}-{1}-{2}-{3}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_stop))
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
 
-	def do_unit_test(self):
+	def do_unit_test_report(self):
 		''' unit test, for reporter, rotray, attenuator... '''
 		ds_ut = {}
 		ds_rota = []
@@ -332,3 +358,17 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.xlsx = ds_ut
 		self.update_timestamp()
 		self.build_xlsx("unitest-{0}-{1}.xlsx".format("report", self.time_prefix))
+
+	def do_unit_test_rpc(self):
+		''' unit test for RPC subsystem '''
+		print("...")
+		from openwrt_luci_rpc import OpenWrtRpc
+		router = OpenWrtRpc('192.168.2.39', 'root', 'admin')
+		result = router.get_all_connected_devices(only_reachable=True)
+
+		for device in result:
+			mac = device.mac
+			name = device.hostname
+
+			# convert class to a dict
+			device_dict = device._asdict()
