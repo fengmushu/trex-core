@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#coding=utf-8 
 
 from trex.console.plugins import *
 from trex.attenuators.attenuator import * 	# AttenGroup, AttenUnit, AttenAdaura
@@ -228,7 +229,7 @@ class SatRunner_Plugin(ConsolePlugin):
 	def do_show(self):
 		''' dump info '''
 		self.trex_client._show_global_stats()
-		stats = self.trex_client.get_stats(ports=[0, 1], sync_now = True)
+		stats = self.trex_client.get_stats(ports=[0, 1, 2, 3], sync_now = True)
 		# print(json.dumps(stats, indent = 4, separators=(',', ': '), sort_keys = True))
 		self.json_dump(stats['global'])
 
@@ -247,7 +248,7 @@ class SatRunner_Plugin(ConsolePlugin):
 				self.trex_client._show_global_stats()
 
 			# collection stats
-			stats = self.trex_client.get_stats(ports=[0, 1], sync_now=True)
+			stats = self.trex_client.get_stats(ports=[0, 1, 2, 3], sync_now=True)
 			# stats = self.trex_client.get_stats(ports=[2, 3], sync_now=True)
 			# stats = self.trex_client.get_stats(sync_now=True)
 			# self.json_dump(stats['global']) --- trace
@@ -260,7 +261,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		''' reset to default, waiting for ready '''
 		print("Reset default atten...")
 		self.atten.SetGroupValue(atten_def)
-		time.sleep(10)
+		time.sleep(15)
 
 		tab_rxbps = {}
 		if cont == 0:
@@ -311,7 +312,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			ds_rota[0] = samples
 		else:
 			self.rotate.SetValue(0)
-			# TODO: wait ready() ...
+			time.sleep(5)
 			for point in rota_angles:
 				angle = self.rotate.GetAngle(point)
 				print("Rotar to angle: {}".format(angle), color='green', format='bold')
@@ -326,7 +327,13 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		if auto_report == 1:
 			self.update_timestamp()
-			self.build_xlsx("{0}-{1}-{2}-{3}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_stop))
+			self.build_xlsx("{0}-{1}-{2}-{3}-{4}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_step, atten_stop))
+
+		try:
+			self.do_beep()
+		except:
+			print("Test finished, beep not supported", color='yellow')
+
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
@@ -363,7 +370,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		''' unit test for RPC subsystem '''
 		print("...")
 		from openwrt_luci_rpc import OpenWrtRpc
-		router = OpenWrtRpc('192.168.2.39', 'root', 'admin')
+		router = OpenWrtRpc('192.168.10.69', 'root', 'admin')
 		result = router.get_all_connected_devices(only_reachable=True)
 
 		for device in result:
@@ -372,3 +379,19 @@ class SatRunner_Plugin(ConsolePlugin):
 
 			# convert class to a dict
 			device_dict = device._asdict()
+
+	def do_beep(self):
+		''' beep '''
+		from pygame import mixer
+
+		mixer.init()
+		mixer.music.load("../audio/dididiba.mp3")
+		mixer.music.play()
+		while mixer.music.get_busy():  # wait for music to finish playing
+			time.sleep(1)
+		mixer.music.stop()
+
+	def do_unit_test_audio(self):
+		''' unit test for wav,mp3 '''
+		# os.system('pwd')
+		self.do_beep()
