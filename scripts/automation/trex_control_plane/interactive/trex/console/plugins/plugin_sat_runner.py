@@ -32,6 +32,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		super(SatRunner_Plugin, self).__init__()
 		self.console = None
 		self.rpc_router = None
+		self.sta_addr = DEF_STA_IP_ADDR
+		self.sta_passwd = DEF_STA_PASSWD
 		self.xlsx = {}
 		self.atten_selection = ATTEN_SELECTION_DEF
 		self.dir_report = '/home/trex/report/'
@@ -40,6 +42,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.rotate = ttyDioRotary(None)
 		self.update_timestamp()
 		self.init_atten_group()
+		self.init_sta_rpc()
 
 	# used to init stuff
 	def plugin_load(self):
@@ -164,23 +167,19 @@ class SatRunner_Plugin(ConsolePlugin):
 			ds_line_thoughput = "='DataRaw'!$B${:d}:$B${:d}".format(offset + 1, offset + len(throughput) - 1)
 			ds_line_rssi = "='DataRaw'!$C${:d}:$C${:d}".format(offset + 1, offset + len(signal_lvl) - 1)
 
-			chart_tput = book.add_chart({'type': 'line'})
-			chart_tput.add_series({
+			# update to combin chart
+			chart_comb = book.add_chart({'type': 'line'})
+			chart_comb.add_series({
 				'categories': ds_atten, 
 				'values': ds_line_thoughput,
 				'name': "='DataRaw'!$B{:d}".format(offset),
 				})
-			chart_tput.set_x_axis({'name': "Atten|Time"})
-			sheet_dataraw.insert_chart('D{:d}'.format(offset), chart_tput)
-
-			chart_rssi = book.add_chart({'type': 'line'})
-			chart_rssi.add_series({
-				'categories': ds_atten, 
+			chart_comb.add_series({
 				'values': ds_line_rssi,
 				'name': "='DataRaw'!$C{:d}".format(offset),
-				})
-			chart_rssi.set_x_axis({'name': "Atten|Time"})
-			sheet_dataraw.insert_chart('K{:d}'.format(offset), chart_rssi)
+				'y2_axis': True,
+			})
+			sheet_dataraw.insert_chart('F{:d}'.format(offset), chart_comb)
 
 			offset += len(atten) + self.section_offset
 			point_idx += 1
@@ -235,9 +234,12 @@ class SatRunner_Plugin(ConsolePlugin):
 		''' setup openwrt rpc '''
 		from openwrt_luci_rpc import OpenWrtRpc
 
-		router = OpenWrtRpc(self.sta_addr, 'root', self.sta_passwd)
-		if not router.is_logged_in():
-			print("rpc: login failed\n", color='red')
+		try:
+			router = OpenWrtRpc(self.sta_addr, 'root', self.sta_passwd)
+			if not router.is_logged_in():
+				print("rpc: login failed\n", color='red')
+				return
+		except:
 			return
 		self.rpc_router = router
 
@@ -396,20 +398,12 @@ class SatRunner_Plugin(ConsolePlugin):
 		attens = [15, 20, 25, 30, 35, 40, 45, 50]
 		for ag in angles:
 			''' data sets link this '''
-			ds_meta = {
-				#  '15': [100000, 200000, 300000, 400000, 500000, 600000],
-				#  '20': [80000, 200000, 300000, 400000, 500000, 60000],
-				#  '25': [70000, 200000, 300000, 400000, 500000, 6000],
-				#  '30': [60000, 200000, 300000, 400000, 50000, 6000],
-				#  '35': [50000, 200000, 300000, 400000, 5000, 600 ],
-				#  '40': [40000, 200000, 300000, 400000, 500, 600],
-				#  '45': [30000, 200000, 300000, 400, 500, 600],
-			}
+			ds_meta = {}
 			for at in attens:
 				base = []
 				for sample in range(1, 10, 1):
 					base.append(random.randint(100000000, 200000000) / at)
-				ds_meta.update({at: base})
+				ds_meta.update({at: [base[:], -127]})
 			ds_ut.update({ag: ds_meta.copy()})
 		self.xlsx = ds_ut
 		self.update_timestamp()
