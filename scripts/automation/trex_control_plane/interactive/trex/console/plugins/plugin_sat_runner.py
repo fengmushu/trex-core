@@ -11,7 +11,7 @@ import random
 
 USE_ATTEN_HP33321_SX 	= 0
 USE_ATTEN_ADAURA 	= 1
-ATTEN_SELECTION_DEF	= USE_ATTEN_ADAURA
+ATTEN_SELECTION_DEF	= USE_ATTEN_HP33321_SX
 '''Step Attenuator selection for test runner and XLSX sheets plugin'''
 XLSX_HEADER_OFFSET = 1
 '''Datasets lable'''
@@ -19,6 +19,10 @@ XLSX_SECTION_OFFSET = 6
 '''Section blank line'''
 STEP_SAMPLE_COUNT = 1
 '''The smaple count of each attenuator step'''
+DEF_STA_IP_ADDR='192.168.10.200'
+'''The ip addr of station'''
+DEF_STA_PASSWD='admin'
+'''The webui passwd of station'''
 
 class SatRunner_Plugin(ConsolePlugin):
 	def plugin_description(self):
@@ -27,6 +31,7 @@ class SatRunner_Plugin(ConsolePlugin):
 	def __init__(self):
 		super(SatRunner_Plugin, self).__init__()
 		self.console = None
+		self.rpc_router = None
 		self.xlsx = {}
 		self.atten_selection = ATTEN_SELECTION_DEF
 		self.dir_report = '/home/trex/report/'
@@ -91,6 +96,14 @@ class SatRunner_Plugin(ConsolePlugin):
 			dest = "atten_selection",
 				help = "0: 'HP33321-SX', 1 <default>: 'Adaura 0-63db, stop 0.5'")
 
+		self.add_argument('--sta-addr', action='store', nargs='?', default = DEF_STA_IP_ADDR, type = str, required=False,
+			dest = "sta_addr",
+				help = 'the ip address of station (wlan-client)')
+
+		self.add_argument('--sta-passwd', action = 'store', nargs='?', default = DEF_STA_PASSWD, type = str, required=False,
+			dest = "sta_passwd",
+				help = "the webui login passwd of station (wlan-client)")
+
 		if self.console is None:
 			raise TRexError("Trex console must provided")
 
@@ -123,14 +136,18 @@ class SatRunner_Plugin(ConsolePlugin):
 		point_idx = 0
 		for angle, samples in keep_angle_scan_atten.items():
 			atten 	= ['Atten|Time', ]
+			signal_lvl = ['Rssi', ]
 			throughput = ['Throughput, {}°'.format(angle), ]
-			for db, rxbps in samples.items():
+			for db, sample in samples.items():
 				atten.append(db)
 				total = 0
-				for snapshot in rxbps:
+				xtps=sample[0]
+				rssi=sample[1]
+				for snapshot in xtps:
 					total += snapshot
-				average = total / len(rxbps)
+				average = total / len(xtps)
 				throughput.append(average)
+				signal_lvl.append(rssi)
 				''' =DataRaw!$B$2,DataRaw!$B$11,DataRaw!$B$20,DataRaw!$B$29,DataRaw!$B$38,DataRaw!$B$47 '''
 				if not db in keep_atten_scan_angle:
 					keep_atten_scan_angle[db] = {}
@@ -141,20 +158,30 @@ class SatRunner_Plugin(ConsolePlugin):
 
 			sheet_dataraw.write_column('A{:d}'.format(offset), atten)
 			sheet_dataraw.write_column('B{:d}'.format(offset), throughput)
+			sheet_dataraw.write_column('C{:d}'.format(offset), signal_lvl)
 
 			ds_atten  = "='DataRaw'!$A${:d}:$A${:d}".format(offset + 1, offset + len(atten) - 1)
 			ds_line_thoughput = "='DataRaw'!$B${:d}:$B${:d}".format(offset + 1, offset + len(throughput) - 1)
+			ds_line_rssi = "='DataRaw'!$C${:d}:$C${:d}".format(offset + 1, offset + len(signal_lvl) - 1)
 
-			chart_line = book.add_chart({'type': 'line'})
-			chart_line.add_series({
+			chart_tput = book.add_chart({'type': 'line'})
+			chart_tput.add_series({
 				'categories': ds_atten, 
 				'values': ds_line_thoughput,
 				'name': "='DataRaw'!$B{:d}".format(offset),
 				})
-			chart_line.set_x_axis({'name': "Atten|Time"})
-			# chart_line.set_y_axis({'name': 'Throughput'})
+			chart_tput.set_x_axis({'name': "Atten|Time"})
+			sheet_dataraw.insert_chart('D{:d}'.format(offset), chart_tput)
 
-			sheet_dataraw.insert_chart('D{:d}'.format(offset), chart_line)
+			chart_rssi = book.add_chart({'type': 'line'})
+			chart_rssi.add_series({
+				'categories': ds_atten, 
+				'values': ds_line_rssi,
+				'name': "='DataRaw'!$C{:d}".format(offset),
+				})
+			chart_rssi.set_x_axis({'name': "Atten|Time"})
+			sheet_dataraw.insert_chart('K{:d}'.format(offset), chart_rssi)
+
 			offset += len(atten) + self.section_offset
 			point_idx += 1
 
@@ -179,6 +206,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			})
 		sheet_dashboard.insert_chart('D1', chart_radar)
 		book.close()
+		return dir_name + filename
 
 	def init_atten_group(self):
 		atten = self.atten_selection
@@ -203,7 +231,17 @@ class SatRunner_Plugin(ConsolePlugin):
 			print("Not supported attenuator: {}".format(atten))
 			raise Exception("Attenuator type '{}' not supported".format(atten))
 
-	def do_setup(self, atten_selection):
+	def init_sta_rpc(self):
+		''' setup openwrt rpc '''
+		from openwrt_luci_rpc import OpenWrtRpc
+
+		router = OpenWrtRpc(self.sta_addr, 'root', self.sta_passwd)
+		if not router.is_logged_in():
+			print("rpc: login failed\n", color='red')
+			return
+		self.rpc_router = router
+
+	def do_setup(self, atten_selection, sta_addr, sta_passwd):
 		''' setup base vars of current system '''
 		if atten_selection == USE_ATTEN_ADAURA:
 			print("atten selection is 'ADAURA-63'")
@@ -211,6 +249,10 @@ class SatRunner_Plugin(ConsolePlugin):
 			print("atten selection is 'HP33321-SX'")
 		self.atten_selection = atten_selection
 		self.init_atten_group()
+
+		self.sta_addr = sta_addr
+		self.sta_passwd = sta_passwd
+		self.init_sta_rpc()
 
 	# We build argparser from do_* functions, stripping the "do_" from name
 	def do_report(self, dir_report, file_report): # <------ name was registered in plugin_load
@@ -257,6 +299,12 @@ class SatRunner_Plugin(ConsolePlugin):
 			time.sleep(intval)
 		return rx_bps
 
+	def update_rssi(self):
+		rssi = -127
+		if self.rpc_router != None:
+			rssi = self.rpc_router.get_rssi()
+		return rssi
+
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
 		''' reset to default, waiting for ready '''
 		print("Reset default atten...")
@@ -268,12 +316,12 @@ class SatRunner_Plugin(ConsolePlugin):
 			for av in range(start, stop, step):
 				self.atten.SetGroupValue(av)
 				rx_bps = self.run_samples(precision, intval / precision)
-				tab_rxbps.update({self.atten_base_value + av: rx_bps[:]})
+				tab_rxbps.update({self.atten_base_value + av: [rx_bps[:], self.update_rssi()]})
 		else:
 			for sp in range(0, cont, precision):
 				print("Sample round: {}".format(sp), color='red')
 				rx_bps = self.run_samples(precision, 1)
-				tab_rxbps.update({sp: rx_bps[:]})
+				tab_rxbps.update({sp: [rx_bps[:], self.update_rssi()]})
 		return tab_rxbps
 
 	def do_run(self, atten_start, atten_step, atten_stop, continuous, atten_value, precision, time_intval, rota_angles, auto_report, test_prefix):
@@ -325,15 +373,16 @@ class SatRunner_Plugin(ConsolePlugin):
 		# self.json_dump(ds_rota) # --- trace
 		self.xlsx = ds_rota
 
+		report_name = ""
 		if auto_report == 1:
 			self.update_timestamp()
-			self.build_xlsx("{0}-{1}-{2}-{3}-{4}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_step, atten_stop))
+			report_name = self.build_xlsx("{0}-{1}-{2}-{3}-{4}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_step, atten_stop))
 
 		try:
-			self.do_beep()
+			self.beep()
 		except:
 			print("Test finished, beep not supported", color='yellow')
-
+		print("Test report: {}".format(report_name))
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
@@ -368,19 +417,25 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def do_unit_test_rpc(self):
 		''' unit test for RPC subsystem '''
-		print("...")
 		from openwrt_luci_rpc import OpenWrtRpc
-		router = OpenWrtRpc('192.168.10.69', 'root', 'admin')
-		result = router.get_all_connected_devices(only_reachable=True)
 
+		router = OpenWrtRpc('192.168.10.200', 'root', 'admin')
+		if not router.is_logged_in():
+			print("rpc: login failed\n", color='red')
+			return
+
+		device_dict = []
+		result = router.get_all_connected_devices(True)
 		for device in result:
 			mac = device.mac
 			name = device.hostname
-
 			# convert class to a dict
-			device_dict = device._asdict()
+			device_dict.append(device._asdict())
+		print(device_dict)
 
-	def do_beep(self):
+		print(router.get_rssi())
+
+	def beep(self):
 		''' beep '''
 		from pygame import mixer
 
@@ -394,4 +449,4 @@ class SatRunner_Plugin(ConsolePlugin):
 	def do_unit_test_audio(self):
 		''' unit test for wav,mp3 '''
 		# os.system('pwd')
-		self.do_beep()
+		self.beep()
