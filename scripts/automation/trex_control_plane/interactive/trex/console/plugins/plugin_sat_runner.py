@@ -2,8 +2,8 @@
 #coding=utf-8 
 
 from trex.console.plugins import *
-from trex.attenuators.attenuator import * 	# AttenGroup, AttenUnit, AttenAdaura
-from trex.attenuators.usbtty_geehy import * 	# ttyDioRotary, ttyUsbGeehy
+from trex.attenuators.attenuator import * 	# AttenGroup, AttenUnit, atten_adaura
+from trex.attenuators.usbtty_geehy import * 	# tty_dio_rotray, tty_usb_geehy
 
 import pprint
 import xlsxwriter
@@ -11,7 +11,7 @@ import random
 
 USE_ATTEN_HP33321_SX 	= 0
 USE_ATTEN_ADAURA 	= 1
-ATTEN_SELECTION_DEF	= USE_ATTEN_HP33321_SX
+ATTEN_SELECTION_DEF	= USE_ATTEN_ADAURA
 '''Step Attenuator selection for test runner and XLSX sheets plugin'''
 XLSX_HEADER_OFFSET = 1
 '''Datasets lable'''
@@ -39,7 +39,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.dir_report = '/home/trex/report/'
 		self.header_offset = XLSX_HEADER_OFFSET
 		self.section_offset = XLSX_SECTION_OFFSET
-		self.rotate = ttyDioRotary(None)
+		self.rotate = tty_dio_rotray(None)
 		self.update_timestamp()
 		self.init_atten_group()
 		self.init_sta_rpc()
@@ -211,21 +211,21 @@ class SatRunner_Plugin(ConsolePlugin):
 		atten = self.atten_selection
 		if atten == USE_ATTEN_ADAURA:
 			# Adaura-63: 0-63db, 0.5db step
-			self.atten = AttenAdaura("ADAURA-63", None)
+			self.atten = atten_adaura("ADAURA-63", None)
 			self.atten_base_value = 10
-			self.atten.Dump()
+			self.atten.dump()
 		elif atten == USE_ATTEN_HP33321_SX:
 			# Hp3X-SC/SD/SG serises
-			ser = ttyUsbGeehy(None)
-			atten_sc = AttenUnit("HP33321-SC", 3, [20, 40, 10])
-			atten_sd = AttenUnit("HP33321-SD", 3, [30, 40, 5])
-			atten_sg = AttenUnit("HP33321-SG", 3, [20, 5, 10])
+			ser = tty_usb_geehy(None)
+			atten_sc = atten_unit("HP33321-SC", 3, [20, 40, 10])
+			atten_sd = atten_unit("HP33321-SD", 3, [30, 40, 5])
+			atten_sg = atten_unit("HP33321-SG", 3, [20, 5, 10])
 			# init group
-			atten_gp_sc_sg = AttenGroup("SC-SG", ser, [atten_sg, atten_sc])
-			# atten_gp_sc_sg.Dump()
+			atten_gp_sc_sg = atten_group("SC-SG", ser, [atten_sg, atten_sc])
+			# atten_gp_sc_sg.dump()
 			self.atten = atten_gp_sc_sg
 			self.atten_base_value = 15
-			self.atten.Dump()
+			self.atten.dump()
 		else:
 			print("Not supported attenuator: {}".format(atten))
 			raise Exception("Attenuator type '{}' not supported".format(atten))
@@ -238,10 +238,13 @@ class SatRunner_Plugin(ConsolePlugin):
 			router = OpenWrtRpc(self.sta_addr, 'root', self.sta_passwd)
 			if not router.is_logged_in():
 				print("rpc: login failed\n", color='red')
-				return
+				return False
 		except:
-			return
+			return False
+		hosts = router.get_all_connected_devices()
+		print(hosts)
 		self.rpc_router = router
+		return True
 
 	def do_setup(self, atten_selection, sta_addr, sta_passwd):
 		''' setup base vars of current system '''
@@ -279,7 +282,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def do_atten(self):
 		''' dump current attenuator grop '''
-		self.atten.Dump()
+		self.atten.dump()
 
 	def json_dump(self, o):
 		print(json.dumps(o, indent=2, separators=(',', ': '), sort_keys = True))
@@ -310,13 +313,13 @@ class SatRunner_Plugin(ConsolePlugin):
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
 		''' reset to default, waiting for ready '''
 		print("Reset default atten...")
-		self.atten.SetGroupValue(atten_def)
+		self.atten.set_group_value(atten_def)
 		time.sleep(15)
 
 		tab_rxbps = {}
 		if cont == 0:
 			for av in range(start, stop, step):
-				self.atten.SetGroupValue(av)
+				self.atten.set_group_value(av)
 				rx_bps = self.run_samples(precision, intval / precision)
 				tab_rxbps.update({self.atten_base_value + av: [rx_bps[:], self.update_rssi()]})
 		else:
@@ -333,6 +336,10 @@ class SatRunner_Plugin(ConsolePlugin):
 			- mode step down the attenuator from start to stop, will get the report of throughput by attenuator value;
 			- both these two mode can run with diffirent angles;
 		'''
+		if self.init_sta_rpc() != True:
+			print("openwrt rpc loss link\n", color="red")
+			return
+
 		if continuous == 0:
 			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
 			print("Target: {0} cut to 5*X = {1}".format(atten_stop, int(atten_stop / 5) * 5), color='red')
@@ -349,29 +356,29 @@ class SatRunner_Plugin(ConsolePlugin):
 			for idx in range(0, len(rota_angles), 1):
 				point = rota_angles[idx]
 				if point > 15:
-					rota_angles[idx] = self.rotate.GetPoint(point)
+					rota_angles[idx] = self.rotate.get_point(point)
 					print("transform {} to {}".format(point, rota_angles[idx]))
 		else:
 			rota_angles = []
 
-		self.rotate.SetOriginal()
+		self.rotate.set_original()
 		print("Rotar angles:{}".format(rota_angles))
 		ds_rota={}
 		if len(rota_angles) == 0:
 			samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 			ds_rota[0] = samples
 		else:
-			self.rotate.SetValue(0)
+			self.rotate.set_value(0)
 			time.sleep(5)
 			for point in rota_angles:
-				angle = self.rotate.GetAngle(point)
+				angle = self.rotate.get_angle(point)
 				print("Rotar to angle: {}".format(angle), color='green', format='bold')
-				self.rotate.SetValue(point)
+				self.rotate.set_value(point)
 				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 				ds_rota[angle] = samples
 		# finished, resotre default values
 		# self.rotate.SetOriginal()
-		self.atten.SetGroupValue(atten_value)
+		self.atten.set_group_value(atten_value)
 		# self.json_dump(ds_rota) # --- trace
 		self.xlsx = ds_rota
 
