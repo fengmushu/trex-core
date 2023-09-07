@@ -19,7 +19,7 @@ XLSX_SECTION_OFFSET = 6
 '''Section blank line'''
 STEP_SAMPLE_COUNT = 1
 '''The smaple count of each attenuator step'''
-DEF_STA_IP_ADDR='192.168.10.200'
+DEF_STA_IP_ADDR='192.168.10.130'
 '''The ip addr of station'''
 DEF_STA_PASSWD='admin'
 '''The webui passwd of station'''
@@ -237,13 +237,15 @@ class SatRunner_Plugin(ConsolePlugin):
 		try:
 			router = OpenWrtRpc(self.sta_addr, 'root', self.sta_passwd)
 			if not router.is_logged_in():
-				print("rpc: login failed\n", color='red')
+				print("OpenWrt-RPC: login failed\n", color='red')
 				return False
 		except:
+			print("OpenWrt-RPC: {} connection failed\n".format(self.sta_addr), color='red')
 			return False
 		hosts = router.get_all_connected_devices()
 		print(hosts)
 		self.rpc_router = router
+		self.current_band = 'ath16'
 		return True
 
 	def do_setup(self, atten_selection, sta_addr, sta_passwd):
@@ -307,7 +309,13 @@ class SatRunner_Plugin(ConsolePlugin):
 	def update_rssi(self):
 		rssi = -127
 		if self.rpc_router != None:
-			rssi = self.rpc_router.get_rssi()
+			rssi = self.rpc_router.get_rssi(self.current_band)
+			if rssi < -90:
+				if self.current_band == 'ath16':
+					self.current_band = 'ath06'
+				else:
+					self.current_band = 'ath16'
+				rssi = self.rpc_router.get_rssi(self.current_band)
 		return rssi
 
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
@@ -336,9 +344,6 @@ class SatRunner_Plugin(ConsolePlugin):
 			- mode step down the attenuator from start to stop, will get the report of throughput by attenuator value;
 			- both these two mode can run with diffirent angles;
 		'''
-		if self.init_sta_rpc() != True:
-			print("openwrt rpc loss link\n", color="red")
-			return
 
 		if continuous == 0:
 			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
@@ -350,6 +355,11 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		if atten_value == 0:
 			atten_value = atten_start
+
+		if self.init_sta_rpc() != True:
+			print("openwrt rpc loss link\n", color="red")
+			self.atten.set_group_value(atten_value)
+			return
 
 		# transform
 		if type(rota_angles) == list:
@@ -417,10 +427,10 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.build_xlsx("unitest-{0}-{1}.xlsx".format("report", self.time_prefix))
 
 	def do_unit_test_rpc(self):
-		''' unit test for RPC subsystem '''
+		''' unit test for OpenWrt-RPC subsystem '''
 		from openwrt_luci_rpc import OpenWrtRpc
 
-		router = OpenWrtRpc('192.168.10.200', 'root', 'admin')
+		router = OpenWrtRpc(DEF_STA_IP_ADDR, 'root', DEF_STA_PASSWD)
 		if not router.is_logged_in():
 			print("rpc: login failed\n", color='red')
 			return
@@ -446,6 +456,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		while mixer.music.get_busy():  # wait for music to finish playing
 			time.sleep(1)
 		mixer.music.stop()
+		mixer.quit()
 
 	def do_unit_test_audio(self):
 		''' unit test for wav,mp3 '''
