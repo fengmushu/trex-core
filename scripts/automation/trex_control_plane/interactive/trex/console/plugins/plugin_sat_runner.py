@@ -140,17 +140,18 @@ class SatRunner_Plugin(ConsolePlugin):
 		for angle, samples in keep_angle_scan_atten.items():
 			atten 	= ['Atten|Time', ]
 			signal_lvl = ['Rssi', ]
+			link_quality = ['LinkQ', ]
 			throughput = ['Throughput, {}°'.format(angle), ]
 			for db, sample in samples.items():
 				atten.append(db)
 				total = 0
-				xtps=sample[0]
-				rssi=sample[1]
+				xtps = sample[0]
 				for snapshot in xtps:
 					total += snapshot
 				average = total / len(xtps)
 				throughput.append(average)
-				signal_lvl.append(rssi)
+				link_quality.append(sample[1][0])
+				signal_lvl.append(sample[1][1])
 				''' =DataRaw!$B$2,DataRaw!$B$11,DataRaw!$B$20,DataRaw!$B$29,DataRaw!$B$38,DataRaw!$B$47 '''
 				if not db in keep_atten_scan_angle:
 					keep_atten_scan_angle[db] = {}
@@ -162,6 +163,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			sheet_dataraw.write_column('A{:d}'.format(offset), atten)
 			sheet_dataraw.write_column('B{:d}'.format(offset), throughput)
 			sheet_dataraw.write_column('C{:d}'.format(offset), signal_lvl)
+			sheet_dataraw.write_column('D{:d}'.format(offset), link_quality)
 
 			ds_atten  = "='DataRaw'!$A${:d}:$A${:d}".format(offset + 1, offset + len(atten) - 1)
 			ds_line_thoughput = "='DataRaw'!$B${:d}:$B${:d}".format(offset + 1, offset + len(throughput) - 1)
@@ -245,7 +247,6 @@ class SatRunner_Plugin(ConsolePlugin):
 		hosts = router.get_all_connected_devices()
 		print(hosts)
 		self.rpc_router = router
-		self.current_band = 'ath16'
 		return True
 
 	def do_setup(self, atten_selection, sta_addr, sta_passwd):
@@ -290,6 +291,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		print(json.dumps(o, indent=2, separators=(',', ': '), sort_keys = True))
 
 	def run_samples(self, samples, intval):
+		self.beep_short()
+		time.sleep(5)
 		rx_bps = []
 		for tv in range(0, samples, 1):
 			# limit update rate
@@ -309,20 +312,16 @@ class SatRunner_Plugin(ConsolePlugin):
 	def update_rssi(self):
 		rssi = -127
 		if self.rpc_router != None:
-			rssi = self.rpc_router.get_rssi(self.current_band)
-			if rssi < -90:
-				if self.current_band == 'ath16':
-					self.current_band = 'ath06'
-				else:
-					self.current_band = 'ath16'
-				rssi = self.rpc_router.get_rssi(self.current_band)
-		return rssi
+			linkq, _, rssi = self.rpc_router.get_rssi()
+
+		print(linkq, rssi, color='red')
+		return [linkq, rssi]
 
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
 		''' reset to default, waiting for ready '''
 		print("Reset default atten...")
 		self.atten.set_group_value(atten_def)
-		time.sleep(15)
+		time.sleep(10)
 
 		tab_rxbps = {}
 		if cont == 0:
@@ -396,11 +395,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		if auto_report == 1:
 			self.update_timestamp()
 			report_name = self.build_xlsx("{0}-{1}-{2}-{3}-{4}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_step, atten_stop))
-
-		try:
-			self.beep()
-		except:
-			print("Test finished, beep not supported", color='yellow')
+		self.beep_long()
 		print("Test report: {}".format(report_name))
 
 	def set_plugin_console(self, trex_console):
@@ -444,21 +439,32 @@ class SatRunner_Plugin(ConsolePlugin):
 			device_dict.append(device._asdict())
 		print(device_dict)
 
-		print(router.get_rssi())
+		print(router.get_rssi(None))
 
-	def beep(self):
-		''' beep '''
-		from pygame import mixer
+	def echo(self, fname):
+		''' play audio <fname> '''
+		try:
+			from pygame import mixer
 
-		mixer.init()
-		mixer.music.load("../audio/dididiba.mp3")
-		mixer.music.play()
-		while mixer.music.get_busy():  # wait for music to finish playing
-			time.sleep(1)
-		mixer.music.stop()
-		mixer.quit()
+			mixer.init()
+			mixer.music.load("../audio/{}".format(fname))
+			mixer.music.play()
+			while mixer.music.get_busy():  # wait for music to finish playing
+				time.sleep(1)
+			mixer.music.stop()
+			mixer.quit()
+		except:
+			print("Beep error, ignored\n", color='yellow')
+
+	def beep_short(self):
+		self.echo('beep-short.mp3')
+
+	def beep_long(self):
+		''' beep long '''
+		self.echo('beep-long.mp3')
 
 	def do_unit_test_audio(self):
 		''' unit test for wav,mp3 '''
 		# os.system('pwd')
-		self.beep()
+		self.beep_long()
+		self.beep_short()
