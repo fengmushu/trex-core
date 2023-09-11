@@ -8,6 +8,7 @@ from trex.attenuators.usbtty_geehy import * 	# tty_dio_rotray, tty_usb_geehy
 import pprint
 import xlsxwriter
 import random
+import math
 
 USE_ATTEN_HP33321_SX 	= 0
 USE_ATTEN_ADAURA 	= 1
@@ -19,7 +20,7 @@ XLSX_SECTION_OFFSET = 6
 '''Section blank line'''
 STEP_SAMPLE_COUNT = 1
 '''The smaple count of each attenuator step'''
-DEF_STA_IP_ADDR='192.168.10.130'
+DEF_STA_IP_ADDR='192.168.10.230'
 '''The ip addr of station'''
 DEF_STA_PASSWD='admin'
 '''The webui passwd of station'''
@@ -34,15 +35,18 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.rpc_router = None
 		self.sta_addr = DEF_STA_IP_ADDR
 		self.sta_passwd = DEF_STA_PASSWD
+		self.time_fraction = 0
+		self.time_fraction_passed = 0
 		self.xlsx = {}
 		self.atten_selection = ATTEN_SELECTION_DEF
 		self.dir_report = '/home/trex/report/'
 		self.header_offset = XLSX_HEADER_OFFSET
 		self.section_offset = XLSX_SECTION_OFFSET
-		self.rotate = tty_dio_rotray(None)
-		self.update_timestamp()
+		self.update_ts_subfix()
 		self.init_atten_group()
 		self.init_sta_rpc()
+		self.rotate = tty_dio_rotray(None)
+		self.rotate.set_original()
 
 	# used to init stuff
 	def plugin_load(self):
@@ -110,8 +114,13 @@ class SatRunner_Plugin(ConsolePlugin):
 		if self.console is None:
 			raise TRexError("Trex console must provided")
 
-	def update_timestamp(self):
-		self.time_prefix = time.strftime("%Y-%m-%d-%H%M%S", time.localtime())
+	def update_ts_subfix(self):
+		self.subfix_time = time.strftime("%Y-%m-%d-%H%M%S", time.localtime())
+		return self.subfix_time
+
+	def update_ts(self):
+		self.ts = time.time()
+		return self.ts
 
 	def build_xlsx(self, filename):
 		ts = time.localtime()
@@ -273,8 +282,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.trex_client.logger.info('Sheets will dump to: {0}/{1}!'.format(
 				self.dir_report, bold(file_report.capitalize()))) # <--- trex_client is set implicitly
 
-		self.update_timestamp()
-		self.build_xlsx("report-{0}.xlsx".format(self.time_prefix, file_report))
+		self.update_ts_subfix()
+		self.build_xlsx("report-{0}.xlsx".format(self.subfix_time, file_report))
 
 	def do_show(self):
 		''' dump info '''
@@ -314,8 +323,18 @@ class SatRunner_Plugin(ConsolePlugin):
 		if self.rpc_router != None:
 			linkq, _, rssi = self.rpc_router.get_rssi()
 
-		print(linkq, rssi, color='red')
+		print("Link quality: {} with rssi: {}".format(linkq, rssi), color='red')
 		return [linkq, rssi]
+
+	def update_processbar(self):
+		self.time_fraction_passed += 1
+		time_passed = int(self.update_ts()- self.ts_start)
+		time_needed = int(time_passed * self.time_fraction / self.time_fraction_passed)
+		self.time_needed = time_needed
+		self.time_passed = time_passed
+		print("Processbar {}:{} as {:.2f}%\n".format(time_passed, time_needed - time_passed,\
+					        100 * time_passed / time_needed), color='purple')
+		return self.time_passed, self.time_needed
 
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
 		''' reset to default, waiting for ready '''
@@ -329,11 +348,13 @@ class SatRunner_Plugin(ConsolePlugin):
 				self.atten.set_group_value(av)
 				rx_bps = self.run_samples(precision, intval / precision)
 				tab_rxbps.update({self.atten_base_value + av: [rx_bps[:], self.update_rssi()]})
+				self.update_processbar()
 		else:
 			for sp in range(0, cont, precision):
 				print("Sample round: {}".format(sp), color='red')
 				rx_bps = self.run_samples(precision, 1)
 				tab_rxbps.update({sp: [rx_bps[:], self.update_rssi()]})
+				self.update_processbar()
 		return tab_rxbps
 
 	def do_run(self, atten_start, atten_step, atten_stop, continuous, atten_value, precision, time_intval, rota_angles, auto_report, test_prefix):
@@ -345,12 +366,16 @@ class SatRunner_Plugin(ConsolePlugin):
 		'''
 
 		if continuous == 0:
+			time_fraction = math.ceil((atten_stop - atten_start) / atten_step)
+			self.subfix_mode = "Atten-{}-{}-{}-{}".format(atten_start, atten_step, atten_stop, time_intval)
 			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
 			print("Target: {0} cut to 5*X = {1}".format(atten_stop, int(atten_stop / 5) * 5), color='red')
 			print("  Angle {}: {}".format(type(rota_angles), rota_angles), color='green')
-			print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec.\n".format(atten_start, atten_stop, atten_step, time_intval))
+			print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec, {:d}.\n".format(atten_start, atten_stop, atten_step, time_intval, time_fraction))
 		else:
-			print("Run continuous scan: {:d} secs".format(continuous), color='green', format='bold')
+			time_fraction = math.ceil(continuous / precision)
+			self.subfix_mode = "Contu-{}-{}".format(continuous, precision)
+			print("Run continuous scan: {:d} secs, {:d}".format(continuous, time_fraction), color='green', format='bold')
 
 		if atten_value == 0:
 			atten_value = atten_start
@@ -358,9 +383,13 @@ class SatRunner_Plugin(ConsolePlugin):
 		if self.init_sta_rpc() != True:
 			print("openwrt rpc loss link\n", color="red")
 			self.atten.set_group_value(atten_value)
-			return
+			# return
 
 		# transform
+		self.ts_start = self.update_ts()
+		self.time_fraction_passed = 0
+		self.time_fraction = time_fraction
+		self.update_ts_subfix()
 		if type(rota_angles) == list:
 			for idx in range(0, len(rota_angles), 1):
 				point = rota_angles[idx]
@@ -374,9 +403,12 @@ class SatRunner_Plugin(ConsolePlugin):
 		print("Rotar angles:{}".format(rota_angles))
 		ds_rota={}
 		if len(rota_angles) == 0:
+			self.subfix_rota = ""
 			samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 			ds_rota[0] = samples
 		else:
+			self.time_fraction *= len(rota_angles)
+			self.subfix_rota = "Rota-{}-{}-{}".format(len(rota_angles), self.rotate.get_angle(rota_angles[0]), self.rotate.get_angle(rota_angles[-1]))
 			self.rotate.set_value(0)
 			time.sleep(5)
 			for point in rota_angles:
@@ -385,16 +417,15 @@ class SatRunner_Plugin(ConsolePlugin):
 				self.rotate.set_value(point)
 				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 				ds_rota[angle] = samples
-		# finished, resotre default values
+		# Resotre default values
 		# self.rotate.SetOriginal()
-		self.atten.set_group_value(atten_value)
 		# self.json_dump(ds_rota) # --- trace
 		self.xlsx = ds_rota
+		self.atten.set_group_value(atten_value)
 
 		report_name = ""
 		if auto_report == 1:
-			self.update_timestamp()
-			report_name = self.build_xlsx("{0}-{1}-{2}-{3}-{4}.xlsx".format(test_prefix, self.time_prefix, atten_start, atten_step, atten_stop))
+			report_name = self.build_xlsx("{0}-TS-{1}-{2}-{3}.xlsx".format(test_prefix, self.update_ts_subfix(), self.subfix_mode, self.subfix_rota))
 		self.beep_long()
 		print("Test report: {}".format(report_name))
 
@@ -418,8 +449,8 @@ class SatRunner_Plugin(ConsolePlugin):
 				ds_meta.update({at: [base[:], -127]})
 			ds_ut.update({ag: ds_meta.copy()})
 		self.xlsx = ds_ut
-		self.update_timestamp()
-		self.build_xlsx("unitest-{0}-{1}.xlsx".format("report", self.time_prefix))
+		self.update_ts_subfix()
+		self.build_xlsx("unitest-{0}-{1}.xlsx".format("report", self.subfix_time))
 
 	def do_unit_test_rpc(self):
 		''' unit test for OpenWrt-RPC subsystem '''
@@ -453,7 +484,8 @@ class SatRunner_Plugin(ConsolePlugin):
 				time.sleep(1)
 			mixer.music.stop()
 			mixer.quit()
-		except:
+		except Exception as e:
+			print(e)
 			print("Beep error, ignored\n", color='yellow')
 
 	def beep_short(self):
