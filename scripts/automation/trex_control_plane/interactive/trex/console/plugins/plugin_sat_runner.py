@@ -332,8 +332,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		time_needed = int(time_passed * self.time_fraction / self.time_fraction_passed)
 		self.time_needed = time_needed
 		self.time_passed = time_passed
-		print("Processbar {}:{} as {:.2f}%\n".format(time_passed, time_needed - time_passed,\
-					        100 * time_passed / time_needed), color='purple')
+		print("Progress bar {}:{} as {:.2f}% ".format(time_passed, time_needed - time_passed,\
+					        100 * time_passed / time_needed), color='green', format='blink')
 		return self.time_passed, self.time_needed
 
 	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
@@ -425,7 +425,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		report_name = ""
 		if auto_report == 1:
-			report_name = self.build_xlsx("{0}-TS-{1}-{2}-{3}.xlsx".format(test_prefix, self.update_ts_subfix(), self.subfix_mode, self.subfix_rota))
+			report_name = self.build_xlsx("{0}-{1}-{2}-{3}.xlsx".format(test_prefix, self.update_ts_subfix(), self.subfix_mode, self.subfix_rota))
 		self.beep_long()
 		print("Test report: {}".format(report_name))
 
