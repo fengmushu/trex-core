@@ -24,6 +24,7 @@ DEF_STA_IP_ADDR='192.168.10.230'
 '''The ip addr of station'''
 DEF_STA_PASSWD='admin'
 '''The webui passwd of station'''
+DEF_ATTEN_VALUE		= 15
 
 class SatRunner_Plugin(ConsolePlugin):
 	def plugin_description(self):
@@ -44,9 +45,13 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.section_offset = XLSX_SECTION_OFFSET
 		self.update_ts_subfix()
 		self.init_atten_group()
+		self.atten.set_group_value(DEF_ATTEN_VALUE)
 		self.init_sta_rpc()
 		self.rotate = tty_dio_rotray(None)
+		self.rotate.set_break(0)
+		self.rotate.set_break(1)
 		self.rotate.set_original()
+		self.beep_ding()
 
 	# used to init stuff
 	def plugin_load(self):
@@ -340,6 +345,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		''' reset to default, waiting for ready '''
 		print("Reset default atten...")
 		self.atten.set_group_value(atten_def)
+		if self.init_sta_rpc() != True:
+			print("Openwrt RPC link loss\n", color="red")
 		time.sleep(10)
 
 		tab_rxbps = {}
@@ -374,14 +381,14 @@ class SatRunner_Plugin(ConsolePlugin):
 			print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec, {:d}.\n".format(atten_start, atten_stop, atten_step, time_intval, time_fraction))
 		else:
 			time_fraction = math.ceil(continuous / precision)
-			self.subfix_mode = "Contu-{}-{}".format(continuous, precision)
+			self.subfix_mode = "Contu-{}-{}".format(continuous, atten_value)
 			print("Run continuous scan: {:d} secs, {:d}".format(continuous, time_fraction), color='green', format='bold')
 
 		if atten_value == 0:
 			atten_value = atten_start
 
 		if self.init_sta_rpc() != True:
-			print("openwrt rpc loss link\n", color="red")
+			print("OpenWrt RPC link loss\n", color="red")
 			self.atten.set_group_value(atten_value)
 			# return
 
@@ -418,7 +425,8 @@ class SatRunner_Plugin(ConsolePlugin):
 				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
 				ds_rota[angle] = samples
 		# Resotre default values
-		# self.rotate.SetOriginal()
+		self.rotate.set_original()
+		self.rotate.set_break(1)
 		# self.json_dump(ds_rota) # --- trace
 		self.xlsx = ds_rota
 		self.atten.set_group_value(atten_value)
@@ -480,7 +488,8 @@ class SatRunner_Plugin(ConsolePlugin):
 			mixer.init()
 			mixer.music.load("../audio/{}".format(fname))
 			mixer.music.play()
-			while mixer.music.get_busy():  # wait for music to finish playing
+			while mixer.music.get_busy():
+				''' wait for music to finish playing '''
 				time.sleep(1)
 			mixer.music.stop()
 			mixer.quit()
@@ -495,8 +504,13 @@ class SatRunner_Plugin(ConsolePlugin):
 		''' beep long '''
 		self.echo('beep-long.mp3')
 
+	def beep_ding(self):
+		''' beep ding '''
+		self.echo('ding.mp3')
+
 	def do_unit_test_audio(self):
 		''' unit test for wav,mp3 '''
 		# os.system('pwd')
-		self.beep_long()
 		self.beep_short()
+		self.beep_ding()
+		self.beep_long()
