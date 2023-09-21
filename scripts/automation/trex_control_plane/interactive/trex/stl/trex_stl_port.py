@@ -903,10 +903,10 @@ class STLPort(Port):
             p_type_field_len = max(p_type_field_len, len(pkt_types[stream_id]))
 
         info_table = text_tables.TRexTextTable()
-        info_table.set_cols_align(["c"] + ["c"] + ["c"] + ["c"] + ["r"] + ["c"] + ["c"] + ["c"] + ["c"])
-        info_table.set_cols_width([10]  + [15] + [15] + [p_type_field_len]  + [8] + [16]  + [15] + [12] + [12])
-        info_table.set_cols_dtype(["t"] * 9)
-        info_table.header(["ID", "name", "profile", "packet type", "length", "mode", "rate", "PG ID", "next"])
+        info_table.set_cols_align(["c"] + ["c"] + ["c"] + ["r"] + ["c"] + ["c"] + ["c"] + ["c"])
+        info_table.set_cols_width([10]  + [15] + [p_type_field_len]  + [8] + [16]  + [15] + [12] + [12])
+        info_table.set_cols_dtype(["t"] * 8)
+        info_table.header(["ID", "name", "packet type", "length", "mode", "rate", "PG ID", "next"])
 
         for stream_id, stream in data.items():
             if stream.has_flow_stats():
@@ -917,7 +917,7 @@ class STLPort(Port):
             info_table.add_row([
                 stream_id,
                 stream.get_name() or '-',
-                self.__get_stream_profile(stream_id) or '-',
+                # self.__get_stream_profile(stream_id) or '-',
                 pkt_types[stream_id],
                 len(stream.get_pkt())+ 4,
                 stream.get_mode(),
