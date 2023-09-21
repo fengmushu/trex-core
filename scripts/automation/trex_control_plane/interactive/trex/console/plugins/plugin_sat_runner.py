@@ -14,17 +14,17 @@ USE_ATTEN_HP33321_SX 	= 0
 USE_ATTEN_ADAURA 	= 1
 ATTEN_SELECTION_DEF	= USE_ATTEN_ADAURA
 '''Step Attenuator selection for test runner and XLSX sheets plugin'''
-XLSX_HEADER_OFFSET = 1
+XLSX_HEADER_OFFSET 	= 1
 '''Datasets lable'''
-XLSX_SECTION_OFFSET = 6
+XLSX_SECTION_OFFSET 	= 6
 '''Section blank line'''
-STEP_SAMPLE_COUNT = 1
+STEP_SAMPLE_COUNT 	= 1
 '''The smaple count of each attenuator step'''
-DEF_STA_IP_ADDR='192.168.10.230'
+DEF_STA_IP_ADDR		= '192.168.10.230'
 '''The ip addr of station'''
-DEF_STA_PASSWD='admin'
+DEF_STA_PASSWD		= 'admin'
 '''The webui passwd of station'''
-DEF_ATTEN_VALUE		= 15
+DEF_ATTEN_VALUE		= 0
 
 class SatRunner_Plugin(ConsolePlugin):
 	def plugin_description(self):
@@ -52,6 +52,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.rotate.set_break(1)
 		self.rotate.set_original()
 		self.beep_ding()
+		self.prepared = False
 
 	# used to init stuff
 	def plugin_load(self):
@@ -130,7 +131,7 @@ class SatRunner_Plugin(ConsolePlugin):
 	def build_xlsx(self, filename):
 		ts = time.localtime()
 		dir_date = time.strftime("%Y-%m-%d", ts)
-		dir_name = "{0}/{1}".format(self.dir_report, dir_date)
+		dir_name = "{0}/{1}/".format(self.dir_report, dir_date)
 		try:
 			import os
 			os.popen('mkdir -p {}'.format(dir_name))
@@ -306,7 +307,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def run_samples(self, samples, intval):
 		self.beep_short()
-		time.sleep(5)
+		time.sleep(1)
 		rx_bps = []
 		for tv in range(0, samples, 1):
 			# limit update rate
@@ -321,6 +322,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			# rx samples to Mbps
 			rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
 			time.sleep(intval)
+			print('{}'.format('x'))
 		return rx_bps
 
 	def update_rssi(self):
@@ -341,38 +343,23 @@ class SatRunner_Plugin(ConsolePlugin):
 					        100 * time_passed / time_needed), color='green', format='blink')
 		return self.time_passed, self.time_needed
 
-	def run_point_atten(self, start, step, stop, intval, cont, atten_def, precision):
-		''' reset to default, waiting for ready '''
-		print("Reset default atten...")
-		self.atten.set_group_value(atten_def)
-		if self.init_sta_rpc() != True:
-			print("Openwrt RPC link loss\n", color="red")
-		time.sleep(10)
+	def gen_report(self):
+		report_name = self.build_xlsx("{0}-{1}-{2}-{3}.xlsx".format(self.test_prefix, self.update_ts_subfix(), self.subfix_mode, self.subfix_rota))
+		self.beep_long()
+		print("Test report: {}".format(report_name))
 
-		tab_rxbps = {}
-		if cont == 0:
-			for av in range(start, stop, step):
-				self.atten.set_group_value(av)
-				rx_bps = self.run_samples(precision, intval / precision)
-				tab_rxbps.update({self.atten_base_value + av: [rx_bps[:], self.update_rssi()]})
-				self.update_processbar()
-		else:
-			for sp in range(0, cont, precision):
-				print("Sample round: {}".format(sp), color='red')
-				rx_bps = self.run_samples(precision, 1)
-				tab_rxbps.update({sp: [rx_bps[:], self.update_rssi()]})
-				self.update_processbar()
-		return tab_rxbps
-
-	def do_run(self, atten_start, atten_step, atten_stop, continuous, atten_value, precision, time_intval, rota_angles, auto_report, test_prefix):
+	def do_prepare(self, atten_start, atten_step, atten_stop, continuous, atten_value, precision, time_intval, rota_angles, auto_report, test_prefix):
 		'''
-		<run testor> there's two mode: 
+  		  prepare there's two mode: 
 			- mode continuous run with specified attenuator value, will get the report of throughput by time;
 			- mode step down the attenuator from start to stop, will get the report of throughput by attenuator value;
 			- both these two mode can run with diffirent angles;
 		'''
-
 		if continuous == 0:
+			self.atten_range = range(atten_start, atten_stop, atten_step)
+			self.atten_range_len = len(self.atten_range)
+			self.precision = int(time_intval / precision)
+			self.sample_intv = time_intval
 			time_fraction = math.ceil((atten_stop - atten_start) / atten_step)
 			self.subfix_mode = "Atten-{}-{}-{}-{}".format(atten_start, atten_step, atten_stop, time_intval)
 			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
@@ -380,62 +367,95 @@ class SatRunner_Plugin(ConsolePlugin):
 			print("  Angle {}: {}".format(type(rota_angles), rota_angles), color='green')
 			print("  Atten group: from {:d} to {:d} step: {:d} intv: {:d} sec, {:d}.\n".format(atten_start, atten_stop, atten_step, time_intval, time_fraction))
 		else:
+			self.atten_range_len = 1
+			self.atten_range = [atten_value, ]
+			self.precision = precision
+			self.sample_intv = int(continuous / precision)
 			time_fraction = math.ceil(continuous / precision)
 			self.subfix_mode = "Contu-{}-{}".format(continuous, atten_value)
 			print("Run continuous scan: {:d} secs, {:d}".format(continuous, time_fraction), color='green', format='bold')
 
+		self.test_prefix = test_prefix
+		self.continuous = continuous
+		self.time_fraction = time_fraction
+		self.time_fraction_passed = 0
+		self.ts_start = None
 		if atten_value == 0:
 			atten_value = atten_start
-
-		if self.init_sta_rpc() != True:
-			print("OpenWrt RPC link loss\n", color="red")
-			self.atten.set_group_value(atten_value)
-			# return
-
-		# transform
-		self.ts_start = self.update_ts()
-		self.time_fraction_passed = 0
-		self.time_fraction = time_fraction
-		self.update_ts_subfix()
+		self.atten_value = atten_value
+  
 		if type(rota_angles) == list:
+			self.time_fraction *= len(rota_angles)
+			self.subfix_rota = "Rota-{}-{}-{}".format(len(rota_angles), self.rotate.get_angle(rota_angles[0]), self.rotate.get_angle(rota_angles[-1]))
 			for idx in range(0, len(rota_angles), 1):
 				point = rota_angles[idx]
 				if point > 15:
 					rota_angles[idx] = self.rotate.get_point(point)
 					print("transform {} to {}".format(point, rota_angles[idx]))
 		else:
-			rota_angles = []
-
-		self.rotate.set_original()
-		print("Rotar angles:{}".format(rota_angles))
-		ds_rota={}
-		if len(rota_angles) == 0:
+			rota_angles = [rota_angles,]
 			self.subfix_rota = ""
-			samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
-			ds_rota[0] = samples
-		else:
-			self.time_fraction *= len(rota_angles)
-			self.subfix_rota = "Rota-{}-{}-{}".format(len(rota_angles), self.rotate.get_angle(rota_angles[0]), self.rotate.get_angle(rota_angles[-1]))
-			self.rotate.set_value(0)
-			time.sleep(5)
-			for point in rota_angles:
-				angle = self.rotate.get_angle(point)
-				print("Rotar to angle: {}".format(angle), color='green', format='bold')
-				self.rotate.set_value(point)
-				samples = self.run_point_atten(atten_start, atten_step, atten_stop, time_intval, continuous, atten_value, precision)
-				ds_rota[angle] = samples
-		# Resotre default values
-		self.rotate.set_original()
-		self.rotate.set_break(1)
-		# self.json_dump(ds_rota) # --- trace
-		self.xlsx = ds_rota
-		self.atten.set_group_value(atten_value)
+		self.rota_angles = rota_angles
+		print("Rotar angles:{}".format(self.rota_angles))
 
-		report_name = ""
-		if auto_report == 1:
-			report_name = self.build_xlsx("{0}-{1}-{2}-{3}.xlsx".format(test_prefix, self.update_ts_subfix(), self.subfix_mode, self.subfix_rota))
-		self.beep_long()
-		print("Test report: {}".format(report_name))
+		self.rota_angle_idx = 0
+		self.rota_angle_len = len(rota_angles)
+		self.atten_range_idx = 0
+		self.xlsx = {}
+		self.auto_report = auto_report
+		self.prepared = True
+
+	def do_run_next(self) -> int:
+		''' on point per start trigger '''
+		if self.prepared != True:
+			print("Call prepare first", color="red")
+			return 0
+
+		if self.ts_start == None:
+			# start
+			self.ts_start = self.update_ts()
+			self.update_ts_subfix()
+			self.rotate.set_original()
+
+		# run one sample
+		if self.atten_range_idx == 0:
+			# first point
+			self.atten.set_group_value(DEF_ATTEN_VALUE)
+			if self.init_sta_rpc() != True:
+				print("Openwrt RPC link loss\n", color="red")
+			time.sleep(10)
+			self.atten_samples = {}
+
+		cur_atten = self.atten_range[self.atten_range_idx]
+		self.atten.set_group_value(cur_atten)
+
+		rxbps = self.run_samples(self.precision, self.sample_intv)
+		self.atten_samples.update({self.atten_base_value + cur_atten: [rxbps[:], self.update_rssi()]})
+
+		self.atten_range_idx += 1
+		if self.atten_range_idx == self.atten_range_len:
+			# finished one angle/round
+			self.atten_range_idx = 0
+			point = self.rota_angles[self.rota_angle_idx]
+			angle = self.rotate.get_angle(point)
+			self.rotate.set_value(point)
+			self.xlsx.update({angle: self.atten_samples})
+			self.update_processbar()
+			self.rota_angle_idx += 1
+			if self.rota_angle_idx < self.rota_angle_len:
+				return 1
+			else:
+				# finised
+				# self.json_dump(self.xlsx)
+				if self.auto_report != 0:
+					self.gen_report()
+				print("Finished\n", color='green', format='bold')
+				return 0
+
+	def do_run_all(self):
+		''' run all test step '''
+		while self.do_run_next() != 0:
+			print("~")
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
