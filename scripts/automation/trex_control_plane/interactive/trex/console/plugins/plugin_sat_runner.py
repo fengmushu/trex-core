@@ -2,13 +2,13 @@
 #coding=utf-8 
 
 from trex.console.plugins import *
-from trex.attenuators.attenuator import * 	# AttenGroup, AttenUnit, atten_adaura
-from trex.attenuators.usbtty_geehy import * 	# tty_dio_rotray, tty_usb_geehy
+from trex.attenuators import *
 
 import pprint
 import xlsxwriter
 import random
 import math
+import traceback
 
 USE_ATTEN_HP33321_SX 	= 0
 USE_ATTEN_ADAURA 	= 1
@@ -234,18 +234,18 @@ class SatRunner_Plugin(ConsolePlugin):
 		elif atten == USE_ATTEN_HP33321_SX:
 			# Hp3X-SC/SD/SG serises
 			ser = tty_usb_geehy(None)
-			atten_sc = atten_unit("HP33321-SC", 3, [20, 40, 10])
-			atten_sd = atten_unit("HP33321-SD", 3, [30, 40, 5])
-			atten_sg = atten_unit("HP33321-SG", 3, [20, 5, 10])
+			atten_sc = atten_unit(atten_unit.ATTEN_MODE_HP33321_SC)
+			atten_sd = atten_unit(atten_unit.ATTEN_MODE_HP33321_SD)
+			atten_sg = atten_unit(atten_unit.ATTEN_MODE_HP33321_SG)
 			# init group
-			atten_gp_sc_sg = atten_group("SC-SG", ser, [atten_sg, atten_sc])
+			atten_gp_sc_sg = atten_group("SC-SG", ser, [atten_sc, atten_sg])
 			# atten_gp_sc_sg.dump()
 			self.atten = atten_gp_sc_sg
 			self.atten_base_value = 15
 			self.atten.dump()
 		else:
-			print("Not supported attenuator: {}".format(atten))
-			raise Exception("Attenuator type '{}' not supported".format(atten))
+			print("Not supported attenuator: {}, use default {}".format(atten, USE_ATTEN_ADAURA))
+			# raise Exception("Attenuator type '{}' not supported".format(atten))
 
 	def init_sta_rpc(self):
 		''' setup openwrt rpc '''
@@ -326,6 +326,7 @@ class SatRunner_Plugin(ConsolePlugin):
 		return rx_bps
 
 	def update_rssi(self):
+		linkq = 0
 		rssi = -127
 		if self.rpc_router != None:
 			linkq, _, rssi = self.rpc_router.get_rssi()
@@ -450,6 +451,7 @@ class SatRunner_Plugin(ConsolePlugin):
 				if self.auto_report != 0:
 					self.gen_report()
 				print("Finished\n", color='green', format='bold')
+				self.prepared = False
 				return 0
 
 	def do_run_all(self):
