@@ -53,6 +53,8 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.rotate.set_original()
 		self.beep_ding()
 		self.prepared = False
+		self.finished = False
+		self.ts_start = None
 
 	# used to init stuff
 	def plugin_load(self):
@@ -137,6 +139,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			os.popen('mkdir -p {}'.format(dir_name))
 		except Exception as e:
 			print(e)
+			pass
 
 		book = xlsxwriter.Workbook("{0}/{1}".format(dir_name, filename))
 		keep_angle_scan_atten = self.xlsx
@@ -230,7 +233,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			# Adaura-63: 0-63db, 0.5db step
 			self.atten = atten_adaura("ADAURA-63", None)
 			self.atten_base_value = 10
-			self.atten.dump()
+			# self.atten.dump()
 		elif atten == USE_ATTEN_HP33321_SX:
 			# Hp3X-SC/SD/SG serises
 			ser = tty_usb_geehy(None)
@@ -242,7 +245,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			# atten_gp_sc_sg.dump()
 			self.atten = atten_gp_sc_sg
 			self.atten_base_value = 15
-			self.atten.dump()
+			# self.atten.dump()
 		else:
 			print("Not supported attenuator: {}, use default {}".format(atten, USE_ATTEN_ADAURA))
 			# raise Exception("Attenuator type '{}' not supported".format(atten))
@@ -310,19 +313,11 @@ class SatRunner_Plugin(ConsolePlugin):
 		time.sleep(1)
 		rx_bps = []
 		for tv in range(0, samples, 1):
-			# limit update rate
-			if tv % 5 == 0:
-				self.trex_client._show_global_stats()
-
 			# collection stats
 			stats = self.trex_client.get_stats(ports=[0, 1, 2, 3], sync_now=True)
-			# stats = self.trex_client.get_stats(ports=[2, 3], sync_now=True)
-			# stats = self.trex_client.get_stats(sync_now=True)
-			# self.json_dump(stats['global']) --- trace
-			# rx samples to Mbps
 			rx_bps.append(int(stats['global']['rx_bps'] / 1000000))
 			time.sleep(intval)
-			print('{}'.format('x'))
+			self.update_processbar()
 		return rx_bps
 
 	def update_rssi(self):
@@ -340,8 +335,13 @@ class SatRunner_Plugin(ConsolePlugin):
 		time_needed = int(time_passed * self.time_fraction / self.time_fraction_passed)
 		self.time_needed = time_needed
 		self.time_passed = time_passed
-		print("Progress bar {}:{} as {:.2f}% ".format(time_passed, time_needed - time_passed,\
-					        100 * time_passed / time_needed), color='green', format='blink')
+		print("Progress bar {:^5d}/{:^5d}\t {:^6d}/{:^6d}\t {:>6.2f}%\t {:>3d}°\t {:>3d}db".format(\
+			self.time_fraction_passed, self.time_fraction, \
+			time_passed, time_needed - time_passed,\
+			100 * time_passed / time_needed, \
+			self.rotate.get_angle(self.rota_angles[self.rota_angle_idx]),
+			self.atten_range[self.atten_range_idx]), \
+			color='green', format='blink')
 		return self.time_passed, self.time_needed
 
 	def gen_report(self):
@@ -361,7 +361,7 @@ class SatRunner_Plugin(ConsolePlugin):
 			self.atten_range_len = len(self.atten_range)
 			self.precision = int(time_intval / precision)
 			self.sample_intv = time_intval
-			time_fraction = math.ceil((atten_stop - atten_start) / atten_step)
+			time_fraction = int((atten_stop - atten_start) / atten_step) * self.precision
 			self.subfix_mode = "Atten-{}-{}-{}-{}".format(atten_start, atten_step, atten_stop, time_intval)
 			print("Test and report, atten from {0} step {1} to {2}".format(atten_start, atten_step, atten_stop))
 			print("Target: {0} cut to 5*X = {1}".format(atten_stop, int(atten_stop / 5) * 5), color='red')
@@ -370,9 +370,9 @@ class SatRunner_Plugin(ConsolePlugin):
 		else:
 			self.atten_range_len = 1
 			self.atten_range = [atten_value, ]
-			self.precision = precision
-			self.sample_intv = int(continuous / precision)
-			time_fraction = math.ceil(continuous / precision)
+			self.precision = continuous
+			self.sample_intv = precision
+			time_fraction = int(continuous / precision)
 			self.subfix_mode = "Contu-{}-{}".format(continuous, atten_value)
 			print("Run continuous scan: {:d} secs, {:d}".format(continuous, time_fraction), color='green', format='bold')
 
@@ -385,26 +385,51 @@ class SatRunner_Plugin(ConsolePlugin):
 			atten_value = atten_start
 		self.atten_value = atten_value
   
+		print(rota_angles)
 		if type(rota_angles) == list:
 			self.time_fraction *= len(rota_angles)
-			self.subfix_rota = "Rota-{}-{}-{}".format(len(rota_angles), self.rotate.get_angle(rota_angles[0]), self.rotate.get_angle(rota_angles[-1]))
+			self.subfix_rota = "Rota-{}-{}-{}".format(len(rota_angles), rota_angles[0], rota_angles[-1])
 			for idx in range(0, len(rota_angles), 1):
 				point = rota_angles[idx]
 				if point > 15:
 					rota_angles[idx] = self.rotate.get_point(point)
-					print("transform {} to {}".format(point, rota_angles[idx]))
+					# print("transform {} to {}".format(point, rota_angles[idx]))
 		else:
-			rota_angles = [rota_angles,]
-			self.subfix_rota = ""
+			rota_angles = [self.rotate.get_point(rota_angles),]
+			self.subfix_rota = "Fixed"
 		self.rota_angles = rota_angles
-		print("Rotar angles:{}".format(self.rota_angles))
+		print("Rotar angles:{}, time fract {}".format(self.rota_angles, self.time_fraction), color='green')
 
-		self.rota_angle_idx = 0
 		self.rota_angle_len = len(rota_angles)
 		self.atten_range_idx = 0
+		self.rota_angle_idx = 0
 		self.xlsx = {}
 		self.auto_report = auto_report
 		self.prepared = True
+		self.finished = False
+
+	def set_ts_init(self):
+		''' reset test for restart '''
+		self.ts_start = None
+
+	def set_ts_begin(self):
+		''' start '''
+		self.ts_start = self.update_ts()
+		self.time_fraction_passed = 0
+		self.rota_angle_idx = 0
+		self.atten_range_idx = 0
+		self.update_ts_subfix()
+		self.rotate.set_value(self.rota_angles[0])
+
+	def dump_ts_current(self):
+		''' print current ts pos '''
+
+	def do_status(self):
+		''' show current status '''
+		if self.ts_start != None and self.finished != True:
+			self.update_processbar()
+		else:
+			print("Idle and prepared {}, finished {}".format(self.prepared, self.finished), color='green', format='bold')
 
 	def do_run_next(self) -> int:
 		''' on point per start trigger '''
@@ -414,9 +439,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		if self.ts_start == None:
 			# start
-			self.ts_start = self.update_ts()
-			self.update_ts_subfix()
-			self.rotate.set_original()
+			self.set_ts_begin()
 
 		# run one sample
 		if self.atten_range_idx == 0:
@@ -427,37 +450,35 @@ class SatRunner_Plugin(ConsolePlugin):
 			time.sleep(10)
 			self.atten_samples = {}
 
-		cur_atten = self.atten_range[self.atten_range_idx]
-		self.atten.set_group_value(cur_atten)
-
+		atten_value = self.atten_range[self.atten_range_idx]
+		self.atten.set_group_value(atten_value)
 		rxbps = self.run_samples(self.precision, self.sample_intv)
-		self.atten_samples.update({self.atten_base_value + cur_atten: [rxbps[:], self.update_rssi()]})
+		self.atten_samples.update({self.atten_base_value + atten_value: [rxbps[:], self.update_rssi()]})
 
 		self.atten_range_idx += 1
 		if self.atten_range_idx == self.atten_range_len:
-			# finished one angle/round
+			# one angle/round
 			self.atten_range_idx = 0
 			point = self.rota_angles[self.rota_angle_idx]
 			angle = self.rotate.get_angle(point)
 			self.rotate.set_value(point)
 			self.xlsx.update({angle: self.atten_samples})
-			self.update_processbar()
 			self.rota_angle_idx += 1
 			if self.rota_angle_idx < self.rota_angle_len:
-				return 1
+				return 1 # next angle
 			else:
-				# finised
-				# self.json_dump(self.xlsx)
 				if self.auto_report != 0:
 					self.gen_report()
 				print("Finished\n", color='green', format='bold')
-				self.prepared = False
-				return 0
+				self.finished = True
+				# self.prepared = False # no prepare need, just repeat
+				return 0 # finished
 
 	def do_run_all(self):
 		''' run all test step '''
+		self.set_ts_init()
 		while self.do_run_next() != 0:
-			print("~")
+			print("The next point...")
 
 	def set_plugin_console(self, trex_console):
 		self.console = trex_console
