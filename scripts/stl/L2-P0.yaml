@@ -1,0 +1,89 @@
+---
+- name: "L2_0_1"
+  
+  stream:
+    action_count: 0
+    enabled: false
+    flags: 0
+    flow_stats:
+      enabled: true
+      rule_type: "latency"
+      stream_id: 10
+    isg: 0.0
+    mode:
+      rate:
+        type: "percentage"
+        value: 1.0
+      type: "continuous"
+      total_pkts: 1
+      pkts_per_burst: 1
+      ibg: 0.0
+      count: 2
+    
+    packet:
+      binary: "6GEfJnAD6GEfJnACCABFAABABNIAAH8RoYfAqAoBwKgKAgQDBAMAJAAAQ5sUbi9gqo2d5T/aK0FpR/9a094xpiBvX+4iMaFGqSMX3CnD"
+      meta: "eyJwcm90b2NvbF9zZWxlY3Rpb24iOnsiaXNfdGNwX3NlbGVjdGVkIjpmYWxzZSwiaXNfdWRwX3NlbGVjdGVkIjp0cnVlLCJpc19pcHY0X3NlbGVjdGVkIjp0cnVlLCJmcmFtZV9sZW5ndGgiOiI4MiIsIm1heF9sZW5ndGgiOiIxNTE4IiwibWluX2xlbmd0aCI6IjgyIiwiaXNfdGFnZ2VkX3ZsYW5fc2VsZWN0ZWQiOmZhbHNlLCJpc19wYXR0ZXJuX3NlbGVjdGVkIjp0cnVlLCJmcmFtZV9sZW5ndGhfdHlwZSI6IkZpeGVkIn0sImV0aGVybmV0Ijp7InR5cGUiOiIwODAwIiwiaXNfb3ZlcnJpZGUiOmZhbHNlfSwibWFjIjp7InNvdXJjZSI6eyJhZGRyZXNzIjoiZTg6NjE6MWY6MjY6NzA6MDIiLCJjb3VudCI6IjE2IiwibW9kZSI6IlRSZXggQ29uZmlnIiwic3RlcCI6IjEifSwiZGVzdGluYXRpb24iOnsiYWRkcmVzcyI6ImU4OjYxOjFmOjI2OjcwOjAzIiwiY291bnQiOiIxNiIsIm1vZGUiOiJUUmV4IENvbmZpZyIsInN0ZXAiOiIxIn19LCJpcHY0Ijp7InNvdXJjZSI6eyJhZGRyZXNzIjoiMTkyLjE2OC4xMC4xIiwiY291bnQiOiIxNiIsIm1vZGUiOiJGaXhlZCIsInN0ZXAiOiIxIn0sImRlc3RpbmF0aW9uIjp7ImFkZHJlc3MiOiIxOTIuMTY4LjEwLjIiLCJjb3VudCI6IjE2IiwibW9kZSI6IkZpeGVkIiwic3RlcCI6IjEifX0sInRjcCI6eyJpc19vdmVycmlkZV9kc3RfcG9ydCI6ZmFsc2UsIndpbmRvdyI6IjEwMjQiLCJjaGVja3N1bSI6IkIzRTMiLCJzcmNfcG9ydCI6IjEwMjUiLCJkc3RfcG9ydCI6IjEwMjUiLCJpc19yc3QiOmZhbHNlLCJpc19zeW5jIjpmYWxzZSwiaXNfcHNoIjpmYWxzZSwiaXNfZmluIjpmYWxzZSwiaXNfdXJnIjpmYWxzZSwiYWNrX251bWJlciI6IjAiLCJ1cmdlbnRfcG9pbnRlciI6IjAiLCJpc19hY2siOmZhbHNlLCJzZXF1ZW5jZV9udW1iZXIiOiIxMjkwMTgiLCJpc19vdmVycmlkZV9zcmNfcG9ydCI6ZmFsc2UsImlzX292ZXJyaWRlX2NoZWNrc3VtIjpmYWxzZX0sInVkcCI6eyJpc19vdmVycmlkZV9kc3RfcG9ydCI6dHJ1ZSwibGVuZ3RoIjoiMjYiLCJjaGVja3N1bSI6IkZGQkEiLCJzcmNfcG9ydCI6IjEwMjciLCJkc3RfcG9ydCI6IjEwMjciLCJpc19vdmVycmlkZV9sZW5ndGgiOmZhbHNlLCJpc19vdmVycmlkZV9zcmNfcG9ydCI6dHJ1ZSwiaXNfb3ZlcnJpZGVfY2hlY2tzdW0iOmZhbHNlfSwicGF5bG9hZCI6eyJ0eXBlIjoiUmFuZG9tIiwicGF0dGVybiI6IjAwIn0sInZsYW4iOnsicHJpb3JpdHkiOiIwIiwiaXNfb3ZlcnJpZGVfdHBfaWQiOmZhbHNlLCJ0cF9pZCI6IkZGRkYiLCJ2X2lkIjoiMCIsImNmaSI6IjAifSwiYWR2YW5zZWRfcHJvcGVydGllcyI6eyJjYWNoZV92YWx1ZSI6IjUwMDAiLCJjYWNoZV9zaXplX3R5cGUiOiJBdXRvIn0sIm1vZGVsX3ZlcnNpb24iOiIxLjAifQ=="
+      model: ""
+    self_start: true
+    advanced_mode: false
+    vm:
+      split_by_var: ""
+      instructions: []
+      cache_size: 5000
+  stream_id: 0
+- name: "L2_0_5"
+  
+  stream:
+    action_count: 0
+    enabled: true
+    flags: 0
+    flow_stats:
+      enabled: true
+      rule_type: "stats"
+      stream_id: 14
+    isg: 0.0
+    mode:
+      rate:
+        type: "percentage"
+        value: 1.0
+      type: "continuous"
+      total_pkts: 1
+      pkts_per_burst: 1
+      ibg: 0.0
+      count: 2
+    
+    packet:
+      binary: "6GEfJnAD6GEfJnACCABFAAXcBNIAAH8Rm+vAqAoBwKgKAgQDBAMFwAAAQ/h+Ja/mxLXoCdaZHfT94T43bESNRtAHLVgynK/gpJqkVdNMscR9D/N6HFqzwPcGc7YqPWvyZj5eH0NiuqbQEVwF5bZITYwctVVRmZf/iNtNmv1FD5g2JT92cKvdtv3V1XHcGKYEWJCOiMY8+YUiiT0uTqGlK0G8JAH/ONU6E6RcaQz2ENcaocWO6X1gSQGGlB6VS4Mm7jAZxsBSZJaIOA+Hm+J5vDL1FN+wHB6nPzoeU80Uq2ovmFkyWb9HONo33LWBmfrXZNp9/L1QYExaXbQapIsz/ouxKORjdTIyUpPX+UtFL4UQwALNi1ZHSCwOP4r6Uo/rU5JYjw+BwCfVWPCl4rynW21K+V01p2V/n2SAQO73ulbX7mGXtYH98kBW2ck13mjNPasZLzSB3ywkPp3dcGN5ScRdZDkMyI/vNIvh3khpIcsC/j5xZu+jN5jApLP9bhgR0IokV5lWVf2Uv+sV4xfucmCpYfzpY6UEgVTSlt1vfXWMyfdcta8k+Up2TcI71FnJRf2MP8wczAQNzGU2zzJyq8EiFraNLPj2nXKUoK9zrprBQ1rBcJDFmer8g4VkNqTCpD6DJL7/eTieurjdZL6LPxWnVd2VSS2lXz3osSMsxvmL6+97hKu/340ae58W8EgP87gRA2RkTmF27Uk3p9t3AtnEk1KIhuT0mgiFGwPF+0HsFVfSE2bkDt//qCwuVNbudMS8xBRz/cIaubRENHZ1GiHVSxtrFRshtniRSjm/xgVRV/VfOqB7L7GnqiRFR4/tVCs1etGg70gqOal895KlUcpZlMAe8vofk5YqtAKLhHm7Qzfqw90azuZOHWiJTZLS6ttHtxybe8Rt+GUd1XTXHEWzG5R12raIWKkRyzELcoGxehlwanLTf6v4FNJoJYOiCGhKmEV2jNpMx9SuW7mu3MsxzwFEubhoCb2HPHeLcfOtAH+2iaulxTXVYN8WzoonvoY0vPFF8NgXFXNQEzAWg1m3nkUoyIdqi8IYfIaHEpTsmSveggFrM4NbLCiCqTaLHV9bTEfOTkqSyTg745rJ5pu2G9VuB/xBfTwgef7KRnM10n3f7Clyef13HlO2M1HvP70jhvGRpZhbbQiD/Xeu+CLHvYNSzFq/sQ2HPgXkFi5dzVaY2maFrwschSqpIhJp2D9Vjppj+ZJKOKRqri42CibehtyLKPSWNttqSHZYrihDOfZx6Ne5BIEkiZikbY59OQB4F0pnfinkiF+WfL6uTEst/McyFHoHdG3wriTR8bL35Bg7zVY3oOrkaqR7RsP8qvs+HHQkbp1cOg5KeGA64Tgpn01nrdbB9Kq4cVjX9qocoQiCXPnyYVTVe6P1k0RqnMUxnB00aPxIFwU5WIiK7ap2PTDVkP5Y3EvOhko5zflplYna0OVtgi59FAOOHlZHhV5btbVLNuNkt8GfRfqOCEUAjXbW5kf7W8uovCKun7tJqI3qIBiVevrlrhxdYSgrUmYant5CsVqyvTSoAZO9Wznw18Tupywt6KhPH5ubr2IOktLLarqzPB66OKAVOlIXhmH65zbaSVAQvcsyQ+1QawrainfdagAfb/szJfRiuCkD/16w4AapqOcc8ONf/QxHcYR2hXbDf2gIM9UVHUM4gSNGe0kDWzUx3tiG9+YJw4Q1VO0beIb3IGaDsNlvzX8kEDvPbPU/uhck5h4jmYGUwy1GY1fTxAzPKB1m5SzhEyze1lJEbU3f/KjBCp1zQVZbXIiXPdDOawSQkSsj3xlFKlNtrJKucovcJBrE2Qkji6OnZ50bcWKBERnd7iQeVxTKqX5+Su8c6cIr6RBPZxiKX659IBdXIKBNM4+MsqOd6EYR52XEAknIAKzqDuQ6JMgNW+BPpJ9KgYO68ImW4Lh7H8EpuDalL5Ekp7fozmi7rU8WSLaelNnXd+uB7M2aAG0NXkOZKNGyCi9axcscUzN/e9g1qcHmmwFuvz8="
+      meta: "eyJwcm90b2NvbF9zZWxlY3Rpb24iOnsiaXNfaXB2NF9zZWxlY3RlZCI6dHJ1ZSwibWF4X2xlbmd0aCI6IjE1MTgiLCJtaW5fbGVuZ3RoIjoiODIiLCJpc190Y3Bfc2VsZWN0ZWQiOmZhbHNlLCJmcmFtZV9sZW5ndGgiOiI2NCIsImlzX3VkcF9zZWxlY3RlZCI6dHJ1ZSwiaXNfcGF0dGVybl9zZWxlY3RlZCI6dHJ1ZSwiaXNfdGFnZ2VkX3ZsYW5fc2VsZWN0ZWQiOmZhbHNlLCJmcmFtZV9sZW5ndGhfdHlwZSI6IlJhbmRvbSJ9LCJldGhlcm5ldCI6eyJ0eXBlIjoiMDgwMCIsImlzX292ZXJyaWRlIjpmYWxzZX0sIm1hYyI6eyJzb3VyY2UiOnsiYWRkcmVzcyI6ImU4OjYxOjFmOjI2OjcwOjAyIiwiY291bnQiOiIxNiIsIm1vZGUiOiJUUmV4IENvbmZpZyIsInN0ZXAiOiIxIn0sImRlc3RpbmF0aW9uIjp7ImFkZHJlc3MiOiJlODo2MToxZjoyNjo3MDowMyIsImNvdW50IjoiMTYiLCJtb2RlIjoiVFJleCBDb25maWciLCJzdGVwIjoiMSJ9fSwiaXB2NCI6eyJzb3VyY2UiOnsiYWRkcmVzcyI6IjE5Mi4xNjguMTAuMSIsImNvdW50IjoiMiIsIm1vZGUiOiJGaXhlZCIsInN0ZXAiOiIxIn0sImRlc3RpbmF0aW9uIjp7ImFkZHJlc3MiOiIxOTIuMTY4LjEwLjIiLCJjb3VudCI6IjIiLCJtb2RlIjoiRml4ZWQiLCJzdGVwIjoiMSJ9fSwidGNwIjp7ImlzX292ZXJyaWRlX2RzdF9wb3J0IjpmYWxzZSwid2luZG93IjoiMTAyNCIsInNlcXVlbmNlX251bWJlciI6IjEyOTAxOCIsInVyZ2VudF9wb2ludGVyIjoiMCIsImlzX2FjayI6ZmFsc2UsImlzX3JzdCI6ZmFsc2UsImlzX2ZpbiI6ZmFsc2UsImlzX3BzaCI6ZmFsc2UsImlzX3N5bmMiOmZhbHNlLCJhY2tfbnVtYmVyIjoiMCIsImNoZWNrc3VtIjoiQjNFMyIsImlzX3VyZyI6ZmFsc2UsImRzdF9wb3J0IjoiMTAyNSIsInNyY19wb3J0IjoiMTAyNSIsImlzX292ZXJyaWRlX3NyY19wb3J0IjpmYWxzZSwiaXNfb3ZlcnJpZGVfY2hlY2tzdW0iOmZhbHNlfSwidWRwIjp7ImlzX292ZXJyaWRlX2RzdF9wb3J0IjpmYWxzZSwibGVuZ3RoIjoiMjYiLCJpc19vdmVycmlkZV9sZW5ndGgiOmZhbHNlLCJjaGVja3N1bSI6IkZGQkEiLCJkc3RfcG9ydCI6IjEwMjciLCJzcmNfcG9ydCI6IjEwMjciLCJpc19vdmVycmlkZV9zcmNfcG9ydCI6ZmFsc2UsImlzX292ZXJyaWRlX2NoZWNrc3VtIjpmYWxzZX0sInBheWxvYWQiOnsidHlwZSI6IlJhbmRvbSIsInBhdHRlcm4iOiIwMCJ9LCJ2bGFuIjp7InByaW9yaXR5IjoiMCIsInZfaWQiOiIwIiwiaXNfb3ZlcnJpZGVfdHBfaWQiOmZhbHNlLCJ0cF9pZCI6IkZGRkYiLCJjZmkiOiIwIn0sImFkdmFuc2VkX3Byb3BlcnRpZXMiOnsiY2FjaGVfc2l6ZV90eXBlIjoiQXV0byIsImNhY2hlX3ZhbHVlIjoiNTAwMCJ9LCJtb2RlbF92ZXJzaW9uIjoiMS4wIn0="
+      model: ""
+    self_start: true
+    advanced_mode: false
+    vm:
+      split_by_var: ""
+      instructions:
+      - init_value: 78
+        max_value: 1514
+        min_value: 78
+        name: "pkt_len"
+        op: "random"
+        size: 2
+        step: 1
+        type: "flow_var"
+      - name: "pkt_len"
+        type: "trim_pkt_size"
+      - add_value: -14
+        is_big_endian: true
+        name: "pkt_len"
+        pkt_offset: 16
+        type: "write_flow_var"
+      - add_value: -34
+        is_big_endian: true
+        name: "pkt_len"
+        pkt_offset: 38
+        type: "write_flow_var"
+      - type: "fix_checksum_hw"
+        l2_len: 14
+        l3_len: 34
+        l4_type: 17
+      cache_size: 5000
+  stream_id: 4
