@@ -4,3 +4,6 @@
 [submodule "scripts/external_libs/witty"]
 	path = scripts/external_libs/witty
 	url = git@github.com:fengmushu/witty.git
+[submodule "scripts/external_libs/openwrt-luci-rpc"]
+	path = scripts/external_libs/openwrt-luci-rpc
+	url = git@github.com:fengmushu/openwrt-luci-rpc.git
