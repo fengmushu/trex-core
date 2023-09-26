@@ -1197,7 +1197,9 @@ class AsyncKeysEngineConsole:
         elif ch == '\t':
             tokens = self.lines[self.line_index].get().split()
             if not tokens:
-                return
+                print(self.lines, self.line_index)
+                # raise Exception("TAB not found")
+                return AsyncKeys.STATUS_NONE
 
             if len(tokens) == 1:
                 self.handle_tab_names(tokens[0])
