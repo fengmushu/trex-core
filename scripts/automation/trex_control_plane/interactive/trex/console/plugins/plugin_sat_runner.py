@@ -26,12 +26,12 @@ class SatRunner_Plugin(ConsolePlugin):
 	ATTEN_PREDICT_STOP_RATIO = 0.1
 	ATTEN_PREDICT_STOP 	= 40	# 40 Mb
 	ATTEN_EXTERNAL_BASE	= 10
+	ATTEN_DEF_VALUE		= 0
 	'''The smaple count of each attenuator step'''
 	DEF_STA_IP_ADDR		= '192.168.10.230'
 	'''The ip addr of station'''
 	DEF_STA_PASSWD		= 'admin'
 	'''The webui passwd of station'''
-	DEF_ATTEN_VALUE		= 0
 	DEF_SAMPLE_FRACTION	= 10
 
 	def plugin_description(self):
@@ -45,11 +45,12 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.sta_passwd = self.DEF_STA_PASSWD
 		self.time_fraction_passed = 0
 		self.atten_selection = self.ATTEN_SELECTION_DEF
+		self.atten_value = self.ATTEN_DEF_VALUE
 		self.header_offset = self.XLSX_HEADER_OFFSET
 		self.section_offset = self.XLSX_SECTION_OFFSET
 		self.update_ts_subfix()
 		self.init_atten_group()
-		self.atten.set_group_value(self.DEF_ATTEN_VALUE)
+		self.atten.set_group_value(self.ATTEN_DEF_VALUE)
 		self.init_sta_rpc()
 		self.rotate = tty_dio_rotray(None)
 		self.rotate.set_break(0)
@@ -177,52 +178,73 @@ class SatRunner_Plugin(ConsolePlugin):
 				if keep_angle_scan_atten[angle].get(atten) == None:
 					keep_angle_scan_atten[angle].update({atten: [[0, 0, 0], [0, -127]]})
 			# build xlsx
-			atten 	= ['Atten|Time', ]
-			signal_lvl = ['Rssi', ]
-			link_quality = ['LinkQ', ]
-			throughput = ['Throughput, {}°'.format(angle), ]
-			for db, point in points.items():
-				atten.append(db)
+			atten_col = ['Atten|Time', ]
+			signal_lvl_col = ['Rssi', ]
+			link_quality_col = ['LinkQ', ]
+			throughput_col = ['Throughput, {}°'.format(angle), ]
+			signal_lvl_prev = -127
+			for atten, point in points.items():
+				atten_col.append(atten)
+				if len(point[0]) == 0:
+					print("Point nil {}".format(point))
+					continue
 				average = int(sum(point[0]) / len(point[0]))
-				throughput.append(average)
-				link_quality.append(point[1][0])
-				signal_lvl.append(point[1][1])
-				''' =DataRaw!$B$2,DataRaw!$B$11,DataRaw!$B$20,DataRaw!$B$29,DataRaw!$B$38,DataRaw!$B$47 '''
-				if not db in keep_atten_scan_angle:
-					keep_atten_scan_angle[db] = {}
-				if point_idx == 0:
-					keep_atten_scan_angle[db].update({angle: "='DataRaw'!$B${:d}".format(offset + len(atten) - 1 )})
+				throughput_col.append(average)
+				link_quality_col.append(point[1][0])
+				signal_lvl = point[1][1]
+				if signal_lvl < -90:
+					signal_lvl = signal_lvl_prev
 				else:
-					keep_atten_scan_angle[db].update({angle: ",'DataRaw'!$B${:d}".format(offset + len(atten) - 1 )})
+					signal_lvl_prev = signal_lvl
+				signal_lvl_col.append(signal_lvl)
+				''' =DataRaw!$B$2,DataRaw!$B$11,DataRaw!$B$20,DataRaw!$B$29,DataRaw!$B$38,DataRaw!$B$47 '''
+				if not atten in keep_atten_scan_angle:
+					keep_atten_scan_angle[atten] = {}
+				if point_idx == 0:
+					keep_atten_scan_angle[atten].update({angle: "='DataRaw'!$B${:d}".format(offset + len(atten_col) - 1 )})
+				else:
+					keep_atten_scan_angle[atten].update({angle: ",'DataRaw'!$B${:d}".format(offset + len(atten_col) - 1 )})
 
-			sheet_dataraw.write_column('A{:d}'.format(offset), atten)
-			sheet_dataraw.write_column('B{:d}'.format(offset), throughput)
-			sheet_dataraw.write_column('C{:d}'.format(offset), signal_lvl)
-			sheet_dataraw.write_column('D{:d}'.format(offset), link_quality)
+			sheet_dataraw.write_column('A{:d}'.format(offset), atten_col)
+			sheet_dataraw.write_column('B{:d}'.format(offset), throughput_col)
+			sheet_dataraw.write_column('C{:d}'.format(offset), signal_lvl_col)
+			sheet_dataraw.write_column('D{:d}'.format(offset), link_quality_col)
 
-			ds_atten  = "='DataRaw'!$A${:d}:$A${:d}".format(offset + 1, offset + len(atten) - 1)
-			ds_line_thoughput = "='DataRaw'!$B${:d}:$B${:d}".format(offset + 1, offset + len(throughput) - 1)
-			ds_line_rssi = "='DataRaw'!$C${:d}:$C${:d}".format(offset + 1, offset + len(signal_lvl) - 1)
+			ds_atten  = "='DataRaw'!$A${:d}:$A${:d}".format(offset + 1, offset + len(atten_col) - 1)
+			ds_line_thoughput = "='DataRaw'!$B${:d}:$B${:d}".format(offset + 1, offset + len(throughput_col) - 1)
+			ds_line_rssi = "='DataRaw'!$C${:d}:$C${:d}".format(offset + 1, offset + len(signal_lvl_col) - 1)
 
+			# calulate max/min
+			y_max = 1000
+			if self.rx_mbps_max > 1000:
+				y_max = math.ceil(self.rx_mbps_max / 1000) * 1000
+			elif self.rx_mbps_max < 100:
+				y_max = 100
 			# update to combin chart
-			chart_comb = book.add_chart({'type': 'scatter', 'subtype': 'smooth_with_markers'})
-			chart_comb.set_y_axis({'min': 0, 'max': self.rx_mbps_max * 1.2})
-			chart_comb.add_series({
+			chart_tput = book.add_chart({'type': 'line'})
+			chart_tput.add_series({
 				'categories': ds_atten, 
 				'values': ds_line_thoughput,
 				'name': "='DataRaw'!$B{:d}".format(offset),
 				'line': {'color': 'navy', 'width': 1.5},
 				})
-			chart_comb.add_series({
+			# secondary chat
+			# chart_rssi = book.add_chart({'type': 'line'})
+			# chart_tput.combine(chart_rssi)
+			chart_tput.add_series({
 				'categories': ds_atten,
 				'values': ds_line_rssi,
 				'name': "='DataRaw'!$C{:d}".format(offset),
-				'y2_axis': True,
 				'line': {'color': 'red', 'width': 1.5},
+				'y2_axis': True,
 			})
-			sheet_dataraw.insert_chart('F{:d}'.format(offset), chart_comb)
+			chart_tput.set_style(14) # excel style: 1-16;
+			chart_tput.set_size({'width': 800, 'height': 340})
+			chart_tput.set_y_axis({'min': 0, 'max': y_max})
+			# chart_tput.set_title({'name': 'T-Put of {}°'.format(angle)})
+			sheet_dataraw.insert_chart('F{:d}'.format(offset), chart_tput)
 
-			offset += len(atten) + self.section_offset
+			# offset += len(atten_col) + self.section_offset
 			point_idx += 1
 
 		# build radar chart
@@ -235,15 +257,15 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		chart_radar.set_x_axis({'name': "Angle"})
 		chart_radar.set_y_axis({'min':0, })
-		for db, angs in keep_atten_scan_angle.items():
+		for atten, angles in keep_atten_scan_angle.items():
 			ds_angle_throughput = ""
-			for angle, ds in angs.items():
+			for angle, ds in angles.items():
 				ds_angle_throughput += ds
 			# print(ds_angle_throughput)
 			chart_radar.add_series({
 				'categories': ds_angles,
 				"values": ds_angle_throughput,
-				"name": "{} db|sec".format(db)
+				"name": "{} db|sec".format(atten)
 			})
 		sheet_dashboard.insert_chart('D1', chart_radar)
 		book.close()
@@ -326,17 +348,14 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	def gen_atten_prediction(self, mbps):
 		''' cal next point atten value '''
-		# avg
-		rx = int(sum(mbps) / len(mbps))
-		if rx > self.rx_mbps_max:
-			self.rx_mbps_max = rx
 		stop_mbps = int(self.rx_mbps_max * self.ATTEN_PREDICT_STOP_RATIO)
 		if stop_mbps < self.ATTEN_PREDICT_STOP:
 			stop_mbps = self.ATTEN_PREDICT_STOP
 		ratio = 0
-		while rx > stop_mbps:	# stop at: 40Mb
+		stop_lvl = mbps
+		while stop_lvl > stop_mbps:	# stop at: 40Mb
 			ratio += 1
-			rx = int(rx / 2)
+			stop_lvl = int(stop_lvl / 2)
 		if ratio == 0:
 			# end of current round
 			self.time_fraction = int(self.time_fraction_passed * len(self.rota_angles) / (self.rota_angle_idx + 1))
@@ -377,8 +396,12 @@ class SatRunner_Plugin(ConsolePlugin):
 			rx_mbps.append(int(stats['global']['rx_bps'] / 1000000))
 			time.sleep(intval)
 			self.update_processbar()
+		# avg
+		rx = int(sum(rx_mbps) / len(rx_mbps))
+		if rx > self.rx_mbps_max:
+			self.rx_mbps_max = rx
 		if self.atten_prediction > 0:
-			self.gen_atten_prediction(rx_mbps)
+			self.gen_atten_prediction(rx)
 		return rx_mbps
 
 	def update_rssi(self):
@@ -446,6 +469,8 @@ class SatRunner_Plugin(ConsolePlugin):
 			self.atten_range = range(atten_start, atten_stop, atten_step)
 			self.atten_range_len = len(self.atten_range)
 			self.precision = int(time_intval / precision)
+			if self.precision < 1:
+				self.precision = 1
 			self.sample_intv = time_intval
 			time_fraction = int((atten_stop - atten_start) / atten_step) * self.precision
 			self.subfix_mode = "Atten-{}-{}-{}-{}".format(atten_start, atten_step, atten_stop, time_intval)
@@ -532,10 +557,10 @@ class SatRunner_Plugin(ConsolePlugin):
 		# run one sample
 		if self.atten_range_idx == 0:
 			# first point
-			self.atten.set_group_value(self.DEF_ATTEN_VALUE)
+			self.atten.set_group_value(self.ATTEN_DEF_VALUE)
 			if self.init_sta_rpc() != True:
 				print("Openwrt RPC timeout\n", color="red")
-			time.sleep(7)
+			time.sleep(15)
 			self.atten_samples = {}
 
 		atten_value = self.atten_range[self.atten_range_idx]
@@ -562,7 +587,7 @@ class SatRunner_Plugin(ConsolePlugin):
 				print("Finished\n", color='green', format='bold')
 				self.finished = True
 				# self.prepared = False # no prepare need, just repeat
-				self.atten.set_group_value(self.atten.MIN)
+				self.atten.set_group_value(self.atten_value)
 				self.rotate.set_original()
 				return 0
 
