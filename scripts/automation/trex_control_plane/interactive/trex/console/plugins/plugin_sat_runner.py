@@ -14,6 +14,7 @@ class SatRunner_Plugin(ConsolePlugin):
 
 	USE_ATTEN_HP33321_SX 	= 0
 	USE_ATTEN_ADAURA 	= 1
+	USE_ATTEN_NONE		= -1
 	ATTEN_SELECTION_DEF	= USE_ATTEN_ADAURA
 	'''Step Attenuator selection for test runner and XLSX sheets plugin'''
 	XLSX_HEADER_OFFSET 	= 1
@@ -123,15 +124,15 @@ class SatRunner_Plugin(ConsolePlugin):
 			dest = "precision", 
 				help = "the sample precision default 1/sec")
 
-		self.add_argument('--atten-selection', action='store', nargs='?', default = self.USE_ATTEN_ADAURA, type = int, required=True,
+		self.add_argument('--atten-selection', action='store', nargs='?', default = self.USE_ATTEN_NONE, type = int, required=False,
 			dest = "atten_selection",
 				help = "0: 'HP33321-SX', 1 <default>: 'Adaura 0-63db, stop 0.5'")
 
-		self.add_argument('--sta-addr', action='store', nargs='?', default = self.DEF_STA_IP_ADDR, type = str, required=False,
+		self.add_argument('--sta-addr', action='store', nargs='?', default = "", type = str, required=False,
 			dest = "sta_addr",
 				help = 'the ip address of station (wlan-client)')
 
-		self.add_argument('--sta-passwd', action = 'store', nargs='?', default = self.DEF_STA_PASSWD, type = str, required=False,
+		self.add_argument('--sta-passwd', action = 'store', nargs='?', default = "", type = str, required=False,
 			dest = "sta_passwd",
 				help = "the webui login passwd of station (wlan-client)")
 
@@ -159,6 +160,8 @@ class SatRunner_Plugin(ConsolePlugin):
 
 		book = xlsxwriter.Workbook("{0}/{1}".format(dir_name, filename))
 		keep_angle_scan_atten = self.xlsx
+		self.json_dump(keep_angle_scan_atten)
+
 		'''
 		first page is graphic report
 		'''
@@ -220,6 +223,10 @@ class SatRunner_Plugin(ConsolePlugin):
 				y_max = math.ceil(self.rx_mbps_max / 1000) * 1000
 			elif self.rx_mbps_max < 100:
 				y_max = 100
+			elif self.rx_mbps_max < 300:
+				y_max = 300
+			elif self.rx_mbps_max < 500:
+				y_max = 500
 			# update to combin chart
 			chart_tput = book.add_chart({'type': 'line'})
 			chart_tput.add_series({
@@ -241,10 +248,11 @@ class SatRunner_Plugin(ConsolePlugin):
 			chart_tput.set_style(14) # excel style: 1-16;
 			chart_tput.set_size({'width': 800, 'height': 340})
 			chart_tput.set_y_axis({'min': 0, 'max': y_max})
+			chart_tput.set_y2_axis({'min': -100, 'max': 0})
 			# chart_tput.set_title({'name': 'T-Put of {}°'.format(angle)})
 			sheet_dataraw.insert_chart('F{:d}'.format(offset), chart_tput)
 
-			# offset += len(atten_col) + self.section_offset
+			offset += len(atten_col) + self.section_offset
 			point_idx += 1
 
 		# build radar chart
@@ -314,18 +322,27 @@ class SatRunner_Plugin(ConsolePlugin):
 		self.rpc_router = router
 		return True
 
-	def do_setup(self, atten_selection, sta_addr, sta_passwd):
+	def do_setup(self, atten_selection, sta_addr, sta_passwd, rota_angles, atten_value):
 		''' setup base vars of current system '''
-		if atten_selection == self.USE_ATTEN_ADAURA:
-			print("atten selection is 'ADAURA-63'")
-		else:
-			print("atten selection is 'HP33321-SX'")
-		self.atten_selection = atten_selection
-		self.init_atten_group()
 
-		self.sta_addr = sta_addr
-		self.sta_passwd = sta_passwd
-		self.init_sta_rpc()
+		if atten_selection != self.USE_ATTEN_NONE:
+			if atten_selection == self.USE_ATTEN_ADAURA:
+				print("atten selection is 'ADAURA-63'")
+			elif atten_selection == self.USE_ATTEN_HP33321_SX:
+				print("atten selection is 'HP33321-SX'")
+			self.atten_selection = atten_selection
+			self.init_atten_group()
+
+		if sta_addr and sta_addr != "":
+			self.sta_addr = sta_addr
+			self.sta_passwd = sta_passwd
+			self.init_sta_rpc()
+
+		if atten_value >= self.atten.MIN and atten_value <= self.atten.MAX:
+			self.atten_value = atten_value
+			self.atten.set_group_value(atten_value)
+		if rota_angles >=0 and rota_angles <= 14:
+			self.rotate.set_value(rota_angles)
 
 	# We build argparser from do_* functions, stripping the "do_" from name
 	def do_report(self, dir_report, file_report): # <------ name was registered in plugin_load
